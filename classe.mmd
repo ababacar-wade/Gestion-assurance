@@ -1,0 +1,84 @@
+classDiagram
+    direction BT
+    %% Hiérarchie des Utilisateurs
+    class User {
+        +int id
+        +string nom
+        +string telephone
+        +string email
+        +string type
+    }
+    class Admin {
+        +string niveau_acces
+    }
+    class Agent {
+        +string code_agent
+        +float commission_rate
+    }
+    class Client {
+        +string profession
+        +string numero_piece_identite
+    }
+
+    Admin --|> User
+    Agent --|> User
+    Client --|> User
+
+    %% Hiérarchie des Assurances (STI)
+    class Assurance {
+        +int id
+        +string nom_offre
+        +float prix_base
+        +string type
+    }
+    class Auto {
+        +int puissance_fiscale
+        +string categorie_usage
+        +float bonus_malus_actuel
+    }
+    class Habitat {
+        +int nombre_pieces
+        +float valeur_contenu
+    }
+    class Vie {
+        +string beneficiaire_designe
+    }
+
+    Auto --|> Assurance
+    Habitat --|> Assurance
+    Vie --|> Assurance
+
+    %% Gestion des contrats et flux
+    class Contrat {
+        +int id
+        +string numero_police
+        +date date_debut
+        +date date_fin
+        +int duree_mois
+        +string statut
+    }
+
+    class Payment {
+        +int id
+        +float montant
+        +string methode
+        +date date_paiement
+    }
+
+    class Sinistre {
+        +int id
+        +date date_evenement
+        +string statut
+    }
+
+    class Remboursement {
+        +int id
+        +float montant_regle
+    }
+
+    %% Relations
+    Client "1" --> "*" Contrat : souscrit
+    Contrat "*" --> "1" Assurance : concerne
+    Contrat "1" --> "*" Payment : est payé par
+    Contrat "1" --> "*" Sinistre : subit
+    Sinistre "1" --> "0..1" Remboursement : génère
