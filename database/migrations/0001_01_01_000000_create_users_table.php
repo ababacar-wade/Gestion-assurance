@@ -13,11 +13,37 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+
+            //  STI 
+            $table->enum('type', ['admin', 'agent', 'client'])->default('client');
+
+            //  Identité commune 
+            $table->string('nom');
+            $table->string('prenom');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->string('telephone', 20)->nullable();
+            $table->string('adresse')->nullable();
+            $table->string('photo')->nullable();
+
+             //  Champs spécifiques Client 
+            $table->date('date_naissance')->nullable();
+            $table->string('cin', 30)->nullable()->comment('Carte Identité Nationale');
+            $table->string('profession')->nullable();
+
+            //  Champs spécifiques Agent 
+            $table->string('matricule')->nullable()->unique();
+            $table->string('zone_couverte')->nullable();
+
+            // ── Statut & sécurité ─────────────────────────────────────────────
+            $table->boolean('is_active')->default(true);
             $table->rememberToken();
+
+            // ── Index ──────────────────────────────────────────────────────────
+            $table->index('type');
+            $table->index('email');
+
             $table->timestamps();
         });
 

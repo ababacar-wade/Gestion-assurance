@@ -40,7 +40,7 @@ Suivez ces étapes pour installer le projet localement :
 
 1. **Cloner le projet**
    ```bash
-   git clone <url-du-depot>
+   git clone https://github.com/ababacar-wade/Gestion-assurance.git
    cd Gestion_assurance
    ```
 
