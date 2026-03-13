@@ -45,6 +45,9 @@ class Assurance extends Model
 
     public function newFromBuilder($attributes = [], $connection = null): static
     {
+
+        $attributes = (array) $attributes; // correction
+
         $type  = $attributes['type'] ?? null;
         $class = static::$stiMap[$type] ?? static::class;
 

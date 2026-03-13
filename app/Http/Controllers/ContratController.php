@@ -2,37 +2,54 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Agent;
 use App\Models\Assurance;
 use App\Models\Contrat;
+use App\Models\Client;
+use App\Models\Agent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class ContratController extends Controller
 {
-    // ── Liste ─────────────────────────────────────────────────
-    public function index()
+    // ── Liste ──────────────────────────────────────────────────────────────
+    public function index(Request $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $contrats = match($user->type) {
-            'admin'  => Contrat::with(['client', 'assurance', 'agent'])->latest()->paginate(15),
-            'agent'  => Contrat::where('agent_id', $user->id)->with(['client', 'assurance'])->latest()->paginate(15),
-            default  => Contrat::where('client_id', $user->id)->with('assurance')->latest()->paginate(15),
+        $query = match($user->type) {
+            'admin'  => Contrat::with(['client', 'assurance', 'agent']),
+            'agent'  => Contrat::where('agent_id', $user->id)->with(['client', 'assurance']),
+            default  => Contrat::where('client_id', $user->id)->with('assurance'),
         };
 
-        return view('contrats.index', compact('contrats'));
+        if ($request->filled('statut') && $request->statut !== 'tous') {
+            $query->where('statut', $request->statut);
+        }
+
+        if ($request->filled('q')) {
+            $query->where('numero_contrat', 'like', '%' . $request->q . '%');
+        }
+
+        $contrats = $query->latest()->paginate(15);
+
+        $view = match($user->type) {
+            'admin'  => 'admin.contrats.index',
+            'agent'  => 'agent.contrats.index',
+            default  => 'client.contrats.index',
+        };
+
+        return view($view, compact('contrats'));
     }
 
-    // ── Formulaire de souscription ────────────────────────────
+    // ── Formulaire création ────────────────────────────────────────────────
     public function create()
     {
         $assurances = Assurance::actives()->get();
-        return view('contrats.create', compact('assurances'));
+        return view('client.contrats.create', compact('assurances'));
     }
 
-    // ── Enregistrement ────────────────────────────────────────
+    // ── Enregistrement ────────────────────────────────────────────────────
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -43,82 +60,121 @@ class ContratController extends Controller
 
         $assurance = Assurance::findOrFail($data['assurance_id']);
 
-        // Calcul automatique date_fin et prime selon périodicité
-        $dateDebut = \Carbon\Carbon::parse($data['date_debut']);
-
-        [$dateFin, $prime] = match($data['periodicite']) {
-            'trimestriel' => [$dateDebut->copy()->addMonths(3),  $assurance->prix_mensuel * 3],
-            'annuel'      => [$dateDebut->copy()->addYear(),      $assurance->prix_annuel],
-            default       => [$dateDebut->copy()->addMonth(),     $assurance->prix_mensuel],
+        // Calcul prime selon périodicité
+        $prime = match($data['periodicite']) {
+            'trimestriel' => $assurance->prix_mensuel * 3 * 0.95,
+            'annuel'      => $assurance->prix_annuel  * 0.9,
+            default       => $assurance->prix_mensuel,
         };
+
+        // Calcul date de fin
+        $dateFin = match($data['periodicite']) {
+            'trimestriel' => \Carbon\Carbon::parse($data['date_debut'])->addMonths(3),
+            'annuel'      => \Carbon\Carbon::parse($data['date_debut'])->addYear(),
+            default       => \Carbon\Carbon::parse($data['date_debut'])->addMonth(),
+        };
+
+        // Assigner un agent disponible (le moins chargé)
+        $agent = Agent::withoutGlobalScopes()
+            ->where('is_active', true)
+            ->withCount(['contrats' => fn($q) => $q->where('statut', 'actif')])
+            ->orderBy('contrats_count')
+            ->first();
 
         $contrat = Contrat::create([
             'client_id'    => Auth::id(),
             'assurance_id' => $assurance->id,
-            'date_debut'   => $dateDebut,
+            'agent_id'     => $agent?->id,
+            'date_debut'   => $data['date_debut'],
             'date_fin'     => $dateFin,
             'periodicite'  => $data['periodicite'],
-            'prime'        => $prime,
+            'prime'        => round($prime, 2),
             'statut'       => 'en_attente',
         ]);
 
-        return redirect()->route('client.payments.store', $contrat)
-            ->with('info', 'Contrat créé. Procédez au paiement.');
+        return redirect()->route('client.contrats.show', $contrat)
+            ->with('success', 'Contrat créé ! Procédez au paiement pour l\'activer.');
     }
 
-    // ── Détail ────────────────────────────────────────────────
+    // ── Détail ────────────────────────────────────────────────────────────
     public function show(Contrat $contrat)
     {
         $this->authorizeContrat($contrat);
-
         $contrat->load(['assurance', 'client', 'agent', 'payments', 'sinistres']);
 
-        return view('contrats.show', compact('contrat'));
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin'  => 'admin.contrats.show',
+            'agent'  => 'agent.contrats.show',
+            default  => 'client.contrats.show',
+        };
+
+        return view($view, compact('contrat'));
     }
 
-    // ── Formulaire modification (Admin/Agent) ─────────────────
+    // ── Formulaire édition ────────────────────────────────────────────────
     public function edit(Contrat $contrat)
     {
-        $agents = Agent::actifs()->get();
-        return view('contrats.edit', compact('contrat', 'agents'));
+        $this->authorizeContrat($contrat);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin' => 'admin.contrats.edit',
+            default => 'agent.contrats.edit',
+        };
+
+        return view($view, compact('contrat'));
     }
 
-    // ── Mise à jour (Admin/Agent) ─────────────────────────────
+    // ── Mise à jour ───────────────────────────────────────────────────────
     public function update(Request $request, Contrat $contrat)
     {
+        $this->authorizeContrat($contrat);
+
         $data = $request->validate([
-            'statut'   => ['required', 'in:en_attente,actif,suspendu,resilié,expire'],
-            'agent_id' => ['nullable', 'exists:users,id'],
-            'notes'    => ['nullable', 'string'],
+            'statut' => ['required', 'in:en_attente,actif,suspendu,resilié,expire'],
+            'notes'  => ['nullable', 'string'],
         ]);
 
         $contrat->update($data);
 
-        return redirect()->route('contrats.show', $contrat)
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $route = match($user->type) {
+            'admin' => 'admin.contrats.show',
+            default => 'agent.contrats.show',
+        };
+
+        return redirect()->route($route, $contrat)
             ->with('success', 'Contrat mis à jour.');
     }
 
-    // ── Résiliation (Admin) ───────────────────────────────────
+    // ── Suppression (admin seulement) ─────────────────────────────────────
     public function destroy(Contrat $contrat)
     {
-        $contrat->update(['statut' => 'resilié']);
-
+        abort_unless(Auth::user()->type === 'admin', 403);
+        $contrat->delete();
         return redirect()->route('admin.contrats.index')
-            ->with('success', 'Contrat résilié.');
+            ->with('success', 'Contrat supprimé.');
     }
 
-    // ── Sécurité : vérifier que le contrat appartient au user ─
+    // ── Sécurité ──────────────────────────────────────────────────────────
     private function authorizeContrat(Contrat $contrat): void
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
         $autorise = match($user->type) {
-            'admin' => true,
-            'agent' => $contrat->agent_id === $user->id,
-            default => $contrat->client_id === $user->id,
+            'admin'  => true,
+            'agent'  => $contrat->agent_id === $user->id,
+            default  => $contrat->client_id === $user->id,
         };
 
-        abort_unless($autorise, 403, 'Accès non autorisé.');
+        abort_unless($autorise, 403);
     }
 }

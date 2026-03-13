@@ -123,40 +123,62 @@
 
     {{-- Info panel --}}
     <div class="col-md-4">
-        <div class="card-sunu card mb-3" style="background:var(--dark);">
-            <div class="card-body">
-                <h6 style="font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; color:white; margin-bottom:1rem;">
-                    <i class="bi bi-info-circle me-2" style="color:var(--orange);"></i>
+
+        {{-- Comment ça marche --}}
+        <div class="card mb-3" style="background:#1A1A2E; border:none; border-radius:16px; overflow:hidden;">
+            <div class="card-body p-3">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; color:white; font-size:.9rem; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem;">
+                    <i class="bi bi-info-circle" style="color:var(--orange);"></i>
                     Comment ça marche ?
-                </h6>
-                @foreach([
-                    ['bi-1-circle', 'Déclaration', 'Remplissez ce formulaire avec tous les détails.'],
-                    ['bi-2-circle', 'Instruction', 'Un agent examine votre dossier sous 48h.'],
-                    ['bi-3-circle', 'Décision', 'Vous recevez une décision et le montant accordé.'],
-                    ['bi-4-circle', 'Indemnisation', 'Le virement est effectué sur votre compte mobile.'],
-                ] as [$icon, $title, $desc])
-                <div class="d-flex gap-2 mb-3">
-                    <i class="bi {{ $icon }}" style="color:var(--orange); font-size:1.1rem; flex-shrink:0; margin-top:.1rem;"></i>
+                </div>
+
+                <div style="display:flex; gap:.75rem; margin-bottom:.875rem;">
+                    <div style="width:28px; height:28px; background:rgba(255,107,43,.25); border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:.72rem; font-weight:800; color:var(--orange);">1</div>
                     <div>
-                        <div style="font-size:.82rem; font-weight:700; color:white;">{{ $title }}</div>
-                        <div style="font-size:.78rem; color:rgba(255,255,255,.5);">{{ $desc }}</div>
+                        <div style="font-size:.82rem; font-weight:700; color:white;">Déclaration</div>
+                        <div style="font-size:.75rem; color:rgba(255,255,255,.5); line-height:1.5;">Remplissez ce formulaire avec tous les détails.</div>
                     </div>
                 </div>
-                @endforeach
+
+                <div style="display:flex; gap:.75rem; margin-bottom:.875rem;">
+                    <div style="width:28px; height:28px; background:rgba(255,107,43,.25); border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:.72rem; font-weight:800; color:var(--orange);">2</div>
+                    <div>
+                        <div style="font-size:.82rem; font-weight:700; color:white;">Instruction</div>
+                        <div style="font-size:.75rem; color:rgba(255,255,255,.5); line-height:1.5;">Un agent examine votre dossier sous 48h.</div>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:.75rem; margin-bottom:.875rem;">
+                    <div style="width:28px; height:28px; background:rgba(255,107,43,.25); border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:.72rem; font-weight:800; color:var(--orange);">3</div>
+                    <div>
+                        <div style="font-size:.82rem; font-weight:700; color:white;">Décision</div>
+                        <div style="font-size:.75rem; color:rgba(255,255,255,.5); line-height:1.5;">Vous recevez une décision et le montant accordé.</div>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:.75rem;">
+                    <div style="width:28px; height:28px; background:rgba(255,107,43,.25); border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:.72rem; font-weight:800; color:var(--orange);">4</div>
+                    <div>
+                        <div style="font-size:.82rem; font-weight:700; color:white;">Indemnisation</div>
+                        <div style="font-size:.75rem; color:rgba(255,255,255,.5); line-height:1.5;">Le virement est effectué sur votre compte mobile.</div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="card-sunu card" style="border-left:3px solid var(--orange);">
-            <div class="card-body" style="padding:1rem;">
-                <div style="font-size:.8rem; font-weight:700; color:var(--text-dark); margin-bottom:.4rem;">
+        {{-- Urgence --}}
+        <div class="card" style="border:none; border-left:4px solid var(--orange); border-radius:12px; background:white;">
+            <div class="card-body p-3">
+                <div style="font-size:.8rem; font-weight:700; color:var(--text-dark); margin-bottom:.35rem;">
                     📞 Urgence sinistre
                 </div>
-                <div style="font-size:1.1rem; font-weight:800; color:var(--orange); font-family:'Plus Jakarta Sans',sans-serif;">
+                <div style="font-size:1.15rem; font-weight:800; color:var(--orange); font-family:'Plus Jakarta Sans',sans-serif;">
                     33 800 00 00
                 </div>
-                <div style="font-size:.75rem; color:var(--text-muted);">Disponible 24h/24, 7j/7</div>
+                <div style="font-size:.75rem; color:var(--text-muted); margin-top:.2rem;">Disponible 24h/24, 7j/7</div>
             </div>
         </div>
+
     </div>
 </div>
 

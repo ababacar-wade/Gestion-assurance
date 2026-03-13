@@ -10,7 +10,7 @@
 
 <div class="card-sunu card">
     <div class="card-body p-0">
-        @if($paiements->isEmpty())
+        @if($payments->isEmpty())
             <div class="text-center py-5">
                 <i class="bi bi-credit-card" style="font-size:2.5rem; color:#CBD5E0;"></i>
                 <p class="mt-2" style="color:var(--text-muted); font-size:.875rem;">Aucun paiement enregistré</p>
@@ -30,7 +30,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($paiements as $p)
+                        @foreach($payments as $p)
                         <tr>
                             <td style="font-weight:700; font-size:.8rem;">{{ $p->reference }}</td>
                             <td style="font-size:.8rem;">{{ $p->contrat->numero_contrat ?? '—' }}</td>
@@ -63,7 +63,7 @@
                 </table>
             </div>
             <div class="p-3 d-flex justify-content-center">
-                {{ $paiements->links() }}
+                {{ $payments->links() }}
             </div>
         @endif
     </div>

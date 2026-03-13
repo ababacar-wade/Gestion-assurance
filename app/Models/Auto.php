@@ -11,6 +11,8 @@ class Auto extends Assurance
     /** @use HasFactory<\Database\Factories\AutoFactory> */
     use HasFactory;
 
+    protected $table = 'assurances';
+
     protected static function booted(): void
     {
         static::addGlobalScope('auto', fn (Builder $q) => $q->where('type', 'auto'));

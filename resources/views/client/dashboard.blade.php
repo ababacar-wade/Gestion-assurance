@@ -1,7 +1,7 @@
 @extends('layouts.dashboard')
 @section('title', 'Mon Tableau de bord')
 @section('page-title', 'Tableau de bord')
-@section('page-subtitle', 'Bonjour {{ Auth::user()->prenom }}, bienvenue sur votre espace')
+@section('page-subtitle', 'Bonjour ' . Auth::user()->prenom . ', bienvenue sur votre espace 👋')
 
 @section('content')
 

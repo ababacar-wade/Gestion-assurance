@@ -8,23 +8,20 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Client extends User
 {
-    /** @use HasFactory<\Database\Factories\ClientFactory> */
     use HasFactory;
 
-    // ── STI : forcer type = 'client' à la création ────────────────────────────
+    protected $table = 'users';
+
+    // NE PAS définir newFromBuilder() ici — hérité de User uniquement
 
     protected static function booted(): void
     {
-        // Global Scope : toutes les requêtes via Client:: ne voient que les clients
         static::addGlobalScope('client', fn (Builder $q) => $q->where('type', 'client'));
 
-        // Injection automatique du type à la création
         static::creating(function (Client $model) {
             $model->type = 'client';
         });
     }
-
-    // ── Relations ─────────────────────────────────────────────────────────────
 
     public function contrats(): HasMany
     {
@@ -40,8 +37,6 @@ class Client extends User
     {
         return $this->hasMany(Sinistre::class, 'client_id');
     }
-
-     // ── Scopes utiles ─────────────────────────────────────────────────────────
 
     public function scopeActifs(Builder $q): Builder
     {

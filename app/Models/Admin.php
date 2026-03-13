@@ -4,12 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 
 class Admin extends User
 {
-    /** @use HasFactory<\Database\Factories\AdminFactory> */
     use HasFactory;
+
+    protected $table = 'users';
+
+    // NE PAS définir newFromBuilder() ici — hérité de User uniquement
 
     protected static function booted(): void
     {

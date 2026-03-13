@@ -11,6 +11,8 @@ class Habitat extends Assurance
     /** @use HasFactory<\Database\Factories\HabitatFactory> */
     use HasFactory;
 
+    protected $table = 'assurances';
+
     protected static function booted(): void
     {
         static::addGlobalScope('habitat', fn (Builder $q) => $q->where('type', 'habitat'));

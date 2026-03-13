@@ -10,29 +10,46 @@ use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
-    // ── Liste des paiements ───────────────────────────────────
+    // ── Liste ──────────────────────────────────────────────────────────────
     public function index()
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
         $payments = match($user->type) {
-            'admin'  => Payment::with(['client', 'contrat.assurance'])->latest()->paginate(15),
-            default  => Payment::where('client_id', $user->id)->with('contrat.assurance')->latest()->paginate(15),
+            'admin' => Payment::with(['client', 'contrat.assurance'])->latest()->paginate(15),
+            default => Payment::where('client_id', $user->id)
+                              ->with('contrat.assurance')
+                              ->latest()
+                              ->paginate(15),
         };
 
-        return view('payments.index', compact('payments'));
+        $view = match($user->type) {
+            'admin' => 'admin.payments.index',
+            default => 'client.payments.index',
+        };
+
+        return view($view, compact('payments'));
     }
 
-    // ── Formulaire de paiement ────────────────────────────────
+    // ── Détail reçu ───────────────────────────────────────────────────────
     public function show(Payment $payment)
     {
-        abort_unless($payment->client_id === Auth::id(), 403);
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // Seul le client propriétaire ou un admin peut voir
+        abort_unless(
+            $payment->client_id === $user->id || $user->type === 'admin',
+            403
+        );
+
         $payment->load('contrat.assurance');
-        return view('payments.show', compact('payment'));
+
+        return view('client.payments.show', compact('payment'));
     }
 
-    // ── Initier un paiement pour un contrat ───────────────────
+    // ── Initier un paiement ───────────────────────────────────────────────
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -43,6 +60,7 @@ class PaymentController extends Controller
 
         $contrat = Contrat::findOrFail($data['contrat_id']);
 
+        // Vérifier que le contrat appartient au client connecté
         abort_unless($contrat->client_id === Auth::id(), 403);
 
         $payment = Payment::create([
@@ -56,21 +74,18 @@ class PaymentController extends Controller
             'statut'        => 'en_attente',
         ]);
 
-        // Simulation : on traite directement sans API externe
         if ($data['methode'] === 'simulation') {
             return $this->simulerPaiement($payment, $contrat);
         }
 
-        // Ici on brancherait une vraie API (Wave, Orange Money...)
-        return redirect()->route('client.payments.show', $payment)
+        return redirect()->route('client.contrats.show', $contrat)
             ->with('info', 'Paiement initié. En attente de confirmation.');
     }
 
-    // ── Simulation de paiement ────────────────────────────────
+    // ── Simulation paiement ───────────────────────────────────────────────
     private function simulerPaiement(Payment $payment, Contrat $contrat)
     {
-        // Simulation : 90% de chance de succès
-        $succes = rand(1, 10) <= 9;
+        $succes = rand(1, 10) <= 9; // 90% de succès
 
         $payment->update([
             'statut'         => $succes ? 'succes' : 'echec',
@@ -85,7 +100,6 @@ class PaymentController extends Controller
 
         if ($succes) {
             $contrat->update(['statut' => 'actif']);
-
             return redirect()->route('client.contrats.show', $contrat)
                 ->with('success', '✅ Paiement simulé avec succès ! Contrat activé.');
         }

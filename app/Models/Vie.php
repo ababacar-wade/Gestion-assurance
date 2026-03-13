@@ -11,6 +11,8 @@ class Vie extends Assurance
     /** @use HasFactory<\Database\Factories\VieFactory> */
     use HasFactory;
 
+    protected $table = 'assurances';
+
     protected static function booted(): void
     {
         static::addGlobalScope('vie', fn (Builder $q) => $q->where('type', 'vie'));

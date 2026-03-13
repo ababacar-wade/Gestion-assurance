@@ -1,0 +1,2872 @@
+﻿=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Admin.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Admin extends User
+{
+    /** @use HasFactory<\Database\Factories\AdminFactory> */
+    use HasFactory;
+
+    protected $table = 'users';
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('admin', fn (Builder $q) => $q->where('type', 'admin'));
+
+        static::creating(function (Admin $model) {
+            $model->type = 'admin';
+        });
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Agent.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Agent extends User
+{
+    /** @use HasFactory<\Database\Factories\AgentFactory> */
+    use HasFactory;
+
+    protected $table = 'users';
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('agent', fn (Builder $q) => $q->where('type', 'agent'));
+
+        static::creating(function (Agent $model) {
+            $model->type = 'agent';
+        });
+    }
+
+    // â”€â”€ Relations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    /** Contrats dont cet agent est responsable */
+    public function contrats(): HasMany
+    {
+        return $this->hasMany(Contrat::class, 'agent_id');
+    }
+
+    /** Sinistres dont cet agent est chargÃ© */
+    public function sinistres(): HasMany
+    {
+        return $this->hasMany(Sinistre::class, 'agent_id');
+    }
+
+    // â”€â”€ Accesseur : nombre de contrats actifs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function getNbContratsActifsAttribute(): int
+    {
+        return $this->contrats()->where('statut', 'actif')->count();
+    }
+
+    public static function scopeActifs(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder
+    {
+        return $q->where('is_active', true);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Assurance.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Assurance extends Model
+{
+    /** @use HasFactory<\Database\Factories\AssuranceFactory> */
+    use HasFactory;
+
+    protected $fillable = [
+        'type', 'nom', 'description', 'prix_mensuel', 'prix_annuel',
+        'montant_couverture', 'is_active', 'garanties',
+        // auto
+        'marque_vehicule', 'modele_vehicule', 'annee_vehicule',
+        'type_vehicule', 'formule_auto',
+        // habitat
+        'type_habitat', 'surface_m2', 'couvre_contenu', 'couvre_structure',
+        // vie
+        'duree_annees', 'capital_garanti', 'age_min', 'age_max',
+    ];
+
+    protected $casts = [
+        'garanties'       => 'array',
+        'is_active'       => 'boolean',
+        'prix_mensuel'    => 'decimal:2',
+        'prix_annuel'     => 'decimal:2',
+        'montant_couverture' => 'decimal:2',
+        'couvre_contenu'  => 'boolean',
+        'couvre_structure'=> 'boolean',
+        'capital_garanti' => 'decimal:2',
+    ];
+
+    // â”€â”€ STI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    protected static array $stiMap = [
+        'auto'    => Auto::class,
+        'habitat' => Habitat::class,
+        'vie'     => Vie::class,
+    ];
+
+    public function newFromBuilder($attributes = [], $connection = null): static
+    {
+
+        $attributes = (array) $attributes; // correction
+
+        $type  = $attributes['type'] ?? null;
+        $class = static::$stiMap[$type] ?? static::class;
+
+        $model = new $class();
+        $model->exists = true;
+        $model->setRawAttributes((array) $attributes, true);
+        $model->setConnection($connection ?? $this->getConnectionName());
+        $model->fireModelEvent('retrieved', false);
+
+        return $model;
+    }
+
+    // â”€â”€ Relations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function contrats(): HasMany
+    {
+        return $this->hasMany(Contrat::class, 'assurance_id');
+    }
+
+    // â”€â”€ Scopes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function scopeActives(Builder $q): Builder
+    {
+        return $q->where('is_active', true);
+    }
+
+    // â”€â”€ Accesseur â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function getBadgeTypeAttribute(): string
+    {
+        return match($this->type) {
+            'auto'    => ' Auto',
+            'habitat' => ' Habitat',
+            'vie'     => ' Vie',
+            default   => $this->type,
+        };
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Auto.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Auto extends Assurance
+{
+    /** @use HasFactory<\Database\Factories\AutoFactory> */
+    use HasFactory;
+
+    protected $table = 'assurances';
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('auto', fn (Builder $q) => $q->where('type', 'auto'));
+        static::creating(fn (Auto $m) => $m->type = 'auto');
+    }
+
+    /**
+     * Calcule une prime estimÃ©e selon l'Ã¢ge du vÃ©hicule et la formule choisie.
+     */
+    public function calculerPrime(int $anneeVehicule, string $formule = 'tiers'): float
+    {
+        $age = now()->year - $anneeVehicule;
+
+        $base = match($formule) {
+            'tous_risques'   => $this->prix_mensuel * 1.5,
+            'tiers_etendu'   => $this->prix_mensuel * 1.2,
+            default          => $this->prix_mensuel,
+        };
+
+        // Majoration si vÃ©hicule > 10 ans
+        return $age > 10 ? $base * 1.15 : $base;
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Client.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Client extends User
+{
+    /** @use HasFactory<\Database\Factories\ClientFactory> */
+    use HasFactory;
+
+    // â”€â”€ STI : forcer type = 'client' Ã  la crÃ©ation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    protected $table = 'users';
+
+    protected static function booted(): void
+    {
+        // Global Scope : toutes les requÃªtes via Client:: ne voient que les clients
+        static::addGlobalScope('client', fn (Builder $q) => $q->where('type', 'client'));
+
+        // Injection automatique du type Ã  la crÃ©ation
+        static::creating(function (Client $model) {
+            $model->type = 'client';
+        });
+    }
+
+    // â”€â”€ Relations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function contrats(): HasMany
+    {
+        return $this->hasMany(Contrat::class, 'client_id');
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'client_id');
+    }
+
+    public function sinistres(): HasMany
+    {
+        return $this->hasMany(Sinistre::class, 'client_id');
+    }
+
+     // â”€â”€ Scopes utiles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function scopeActifs(Builder $q): Builder
+    {
+        return $q->where('is_active', true);
+    }
+
+    public function scopeAvecContratActif(Builder $q): Builder
+    {
+        return $q->whereHas('contrats', fn ($c) => $c->where('statut', 'actif'));
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Contrat.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
+
+class Contrat extends Model
+{
+    /** @use HasFactory<\Database\Factories\ContratFactory> */
+    use HasFactory;
+
+    protected $fillable = [
+        'client_id', 'assurance_id', 'agent_id', 'numero_contrat',
+        'date_debut', 'date_fin', 'periodicite', 'prime', 'franchise',
+        'statut', 'document_path', 'documents_supplementaires', 'notes',
+    ];
+
+    protected $casts = [
+        'date_debut'               => 'date',
+        'date_fin'                 => 'date',
+        'prime'                    => 'decimal:2',
+        'franchise'                => 'decimal:2',
+        'documents_supplementaires'=> 'array',
+    ];
+
+    // GÃ©nÃ©ration automatique du numÃ©ro de contrat
+    protected static function booted(): void
+    {
+        static::creating(function (Contrat $contrat) {
+            $contrat->numero_contrat ??= 'CTR-' . strtoupper(Str::random(8));
+        });
+    }
+
+    // â”€â”€ Relations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class, 'client_id')->withoutGlobalScopes();
+    }
+
+    public function assurance(): BelongsTo
+    {
+        return $this->belongsTo(Assurance::class, 'assurance_id');
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class, 'agent_id')->withoutGlobalScopes();
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'contrat_id');
+    }
+
+    public function sinistres(): HasMany
+    {
+        return $this->hasMany(Sinistre::class, 'contrat_id');
+    }
+
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function isActif(): bool
+    {
+        return $this->statut === 'actif' && $this->date_fin->isFuture();
+    }
+
+    public function getStatutBadgeAttribute(): string
+    {
+        return match($this->statut) {
+            'actif'       => '<span class="badge bg-success">Actif</span>',
+            'en_attente'  => '<span class="badge bg-warning">En attente</span>',
+            'suspendu'    => '<span class="badge bg-secondary">Suspendu</span>',
+            'resiliÃ©'     => '<span class="badge bg-danger">RÃ©siliÃ©</span>',
+            'expire'      => '<span class="badge bg-dark">ExpirÃ©</span>',
+            default       => $this->statut,
+        };
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Habitat.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Habitat extends Assurance
+{
+    /** @use HasFactory<\Database\Factories\HabitatFactory> */
+    use HasFactory;
+
+    protected $table = 'assurances';
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('habitat', fn (Builder $q) => $q->where('type', 'habitat'));
+        static::creating(fn (Habitat $m) => $m->type = 'habitat');
+    }
+
+    /**
+     * Prime selon la surface habitable (+ 5 % par tranche de 20 mÂ²).
+     */
+    public function calculerPrime(float $surface): float
+    {
+        $tranches = floor($surface / 20);
+        return $this->prix_mensuel * (1 + ($tranches * 0.05));
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Payment.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class Payment extends Model
+{
+    /** @use HasFactory<\Database\Factories\PaymentFactory> */
+    use HasFactory;
+
+    protected $fillable = [
+        'contrat_id', 'client_id', 'reference', 'transaction_id',
+        'montant', 'devise', 'methode', 'numero_payeur',
+        'statut', 'periode_debut', 'periode_fin', 'payload_retour', 'paye_le',
+    ];
+
+    protected $casts = [
+        'montant'       => 'decimal:2',
+        'payload_retour'=> 'array',
+        'periode_debut' => 'date',
+        'periode_fin'   => 'date',
+        'paye_le'       => 'datetime',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Payment $p) {
+            $p->reference ??= 'PAY-' . strtoupper(Str::random(10));
+        });
+    }
+
+    public function contrat(): BelongsTo
+    {
+        return $this->belongsTo(Contrat::class);
+    }
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class, 'client_id')->withoutGlobalScopes();
+    }
+
+    public function estSucces(): bool
+    {
+        return $this->statut === 'succes';
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Sinistre.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class Sinistre extends Model
+{
+    /** @use HasFactory<\Database\Factories\SinistreFactory> */
+    use HasFactory;
+
+    protected $fillable = [
+        'contrat_id', 'client_id', 'agent_id', 'numero_sinistre',
+        'date_sinistre', 'lieu', 'description',
+        'montant_reclame', 'montant_accorde', 'statut',
+        'documents', 'notes_agent',
+    ];
+
+    protected $casts = [
+        'date_sinistre'   => 'date',
+        'montant_reclame' => 'decimal:2',
+        'montant_accorde' => 'decimal:2',
+        'documents'       => 'array',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Sinistre $s) {
+            $s->numero_sinistre ??= 'SIN-' . strtoupper(Str::random(8));
+        });
+    }
+
+    public function contrat(): BelongsTo  { return $this->belongsTo(Contrat::class); }
+    public function client(): BelongsTo   { return $this->belongsTo(Client::class, 'client_id')->withoutGlobalScopes(); }
+    public function agent(): BelongsTo    { return $this->belongsTo(Agent::class, 'agent_id')->withoutGlobalScopes(); }
+
+    public function getTauxRemboursementAttribute(): ?float
+    {
+        if (!$this->montant_reclame || !$this->montant_accorde) return null;
+        return round(($this->montant_accorde / $this->montant_reclame) * 100, 1);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\User.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+
+class User extends Authenticatable
+{
+    use HasFactory, Notifiable;
+
+    protected $fillable = [
+        'nom', 'prenom', 'email', 'password', 'type',
+        'telephone', 'adresse', 'photo', 'is_active',
+        'date_naissance', 'cin', 'profession',
+        'matricule', 'zone_couverte',
+    ];
+
+    protected $hidden = ['password', 'remember_token'];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'date_naissance'    => 'date',
+        'is_active'         => 'boolean',
+        'password'          => 'hashed',
+    ];
+
+    // â”€â”€ STI : instancier le bon sous-modÃ¨le â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    protected static array $stiMap = [
+        'admin'  => Admin::class,
+        'agent'  => Agent::class,
+        'client' => Client::class,
+    ];
+
+    public function newFromBuilder($attributes = [], $connection = null): static
+    {
+
+        $attributes = (array) $attributes; // correction
+
+        $type  = $attributes['type'] ?? null;
+        $class = static::$stiMap[$type] ?? static::class;
+
+        $model = new $class();
+        $model->exists = true;
+        $model->setRawAttributes((array) $attributes, true);
+        $model->setConnection($connection ?? $this->getConnectionName());
+        $model->fireModelEvent('retrieved', false);
+
+        return $model;
+    }
+
+    // â”€â”€ Helpers de rÃ´le â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function isAdmin(): bool  { return $this->type === 'admin';  }
+    public function isAgent(): bool  { return $this->type === 'agent';  }
+    public function isClient(): bool { return $this->type === 'client'; }
+
+    // â”€â”€ Accesseurs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public function getNomCompletAttribute(): string
+    {
+        return trim($this->prenom . ' ' . $this->nom);
+    }
+
+    public function getPhotoUrlAttribute(): string
+    {
+        return $this->photo
+            ? asset('storage/' . $this->photo)
+            : 'https://ui-avatars.com/api/?name=' . urlencode($this->nom_complet) . '&background=FF6B2B&color=fff';
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Models\Vie.php ===
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Vie extends Assurance
+{
+    /** @use HasFactory<\Database\Factories\VieFactory> */
+    use HasFactory;
+
+    protected $table = 'assurances';
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('vie', fn (Builder $q) => $q->where('type', 'vie'));
+        static::creating(fn (Vie $m) => $m->type = 'vie');
+    }
+
+    /**
+     * Prime mensuelle ajustÃ©e selon l'Ã¢ge du souscripteur.
+     * Plus le client est Ã¢gÃ©, plus la prime augmente.
+     */
+    public function calculerPrime(int $age): float
+    {
+        return match(true) {
+            $age < 30 => $this->prix_mensuel,
+            $age < 45 => $this->prix_mensuel * 1.2,
+            $age < 60 => $this->prix_mensuel * 1.5,
+            default   => $this->prix_mensuel * 2.0,
+        };
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\Auth\AuthController.php ===
+<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\Http\Controllers\Controller;
+use App\Models\Client;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+
+class AuthController extends Controller
+{
+    // â”€â”€ Inscription â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function showRegister()
+    {
+        return view('auth.register');
+    }
+
+    public function register(Request $request)
+    {
+        $data = $request->validate([
+            'nom'            => ['required', 'string', 'max:100'],
+            'prenom'         => ['required', 'string', 'max:100'],
+            'email'          => ['required', 'email', 'unique:users,email'],
+            'telephone'      => ['required', 'string', 'max:20'],
+            'date_naissance' => ['required', 'date', 'before:-18 years'],
+            'password'       => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $client = Client::create([
+            ...$data,
+            'password' => Hash::make($data['password']),
+        ]);
+
+        Auth::login($client);
+
+        return redirect()->route('client.dashboard')
+            ->with('success', "Bienvenue " . $client->prenom . " !");
+    }
+
+    // â”€â”€ Connexion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function showLogin()
+    {
+        return view('auth.login');
+    }
+
+    public function login(Request $request)
+    {
+        $credentials = $request->validate([
+            'email'    => ['required', 'email'],
+            'password' => ['required'],
+        ]);
+
+        if (Auth::attempt($credentials, $request->boolean('remember'))) {
+            $request->session()->regenerate();
+
+            $user = Auth::user();
+
+            return match($user->type) {
+                'admin'  => redirect()->route('admin.dashboard'),
+                'agent'  => redirect()->route('agent.dashboard'),
+                default  => redirect()->route('client.dashboard'),
+            };
+        }
+
+        return back()->withInput($request->only('email'))
+            ->withErrors(['email' => 'Email ou mot de passe incorrect.']);
+    }
+
+    // â”€â”€ DÃ©connexion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function logout(Request $request)
+    {
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login');
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\AdminController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Admin;
+use App\Models\Agent;
+use App\Models\Client;
+use App\Models\Contrat;
+use App\Models\Payment;
+use App\Models\Sinistre;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class AdminController extends Controller
+{
+    public function dashboard()
+    {
+        /** @var \App\Models\Admin $admin */
+        $admin = Auth::user();
+
+        $stats = [
+            'total_clients'     => Client::count(),
+            'total_agents'      => Agent::count(),
+            'contrats_actifs'   => Contrat::where('statut', 'actif')->count(),
+            'sinistres_ouverts' => Sinistre::whereNotIn('statut', ['indemnise', 'refuse'])->count(),
+            'revenus_mois'      => Payment::where('statut', 'succes')
+                                    ->whereMonth('created_at', now()->month)
+                                    ->sum('montant'),
+        ];
+
+        $derniersContrats  = Contrat::with(['client', 'assurance'])->latest()->take(5)->get();
+        $derniersSinistres = Sinistre::with(['client', 'contrat'])->latest()->take(5)->get();
+
+        return view('admin.dashboard', compact(
+            'stats', 'derniersContrats', 'derniersSinistres'
+        ));
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\AgentController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Agent;
+use App\Models\Contrat;
+use App\Models\Client;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+
+class AgentController extends Controller
+{
+    // â”€â”€ Dashboard agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function dashboard()
+    {
+        /** @var \App\Models\Agent $agent */
+        $agent = Auth::user();
+
+        $contrats         = $agent->contrats()->with(['assurance', 'client'])->latest()->get();
+        $contratsActifs   = $contrats->where('statut', 'actif')->count();
+        $sinistresEnCours = $agent->sinistres()
+            ->whereNotIn('statut', ['indemnise', 'refuse'])->count();
+        $nbClients        = $agent->contrats()->distinct('client_id')->count('client_id');
+
+        return view('agent.dashboard', compact(
+            'agent', 'contrats', 'contratsActifs', 'sinistresEnCours', 'nbClients'
+        ));
+    }
+
+    // â”€â”€ Liste des clients de l'agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function clientsIndex()
+    {
+        /** @var \App\Models\Agent $agent */
+        $agent = Auth::user();
+
+        $clients = Client::withoutGlobalScopes()
+            ->whereHas('contrats', fn($q) => $q->where('agent_id', $agent->id))
+            ->with(['contrats' => fn($q) => $q->where('agent_id', $agent->id)])
+            ->paginate(15);
+
+        return view('agent.clients.index', compact('clients'));
+    }
+
+    // â”€â”€ DÃ©tail client (vue agent) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function clientShow(Client $client)
+    {
+        $client->load(['contrats.assurance', 'sinistres', 'payments']);
+        return view('agent.clients.show', compact('client'));
+    }
+
+    // â”€â”€ CRUD Admin : liste â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        $agents = Agent::withoutGlobalScopes()
+            ->where('type', 'agent')
+            ->withCount(['contrats as nb_contrats_actifs' => fn($q) => $q->where('statut', 'actif')])
+            ->latest()
+            ->paginate(15);
+
+        return view('admin.agents.index', compact('agents'));
+    }
+
+    // â”€â”€ CRUD Admin : formulaire crÃ©ation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function create()
+    {
+        return view('admin.agents.create');
+    }
+
+    // â”€â”€ CRUD Admin : enregistrement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'nom'           => ['required', 'string', 'max:100'],
+            'prenom'        => ['required', 'string', 'max:100'],
+            'email'         => ['required', 'email', 'unique:users,email'],
+            'telephone'     => ['nullable', 'string', 'max:20'],
+            'matricule'     => ['nullable', 'string', 'unique:users,matricule'],
+            'zone_couverte' => ['nullable', 'string'],
+            'password'      => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        Agent::create([
+            'nom'           => $data['nom'],
+            'prenom'        => $data['prenom'],
+            'email'         => $data['email'],
+            'telephone'     => $data['telephone'] ?? null,
+            'matricule'     => $data['matricule'] ?? null,
+            'zone_couverte' => $data['zone_couverte'] ?? null,
+            'password'      => Hash::make($data['password']),
+            'is_active'     => true,
+        ]);
+
+        return redirect()->route('admin.agents.index')
+            ->with('success', 'Agent crÃ©Ã© avec succÃ¨s.');
+    }
+
+    // â”€â”€ CRUD Admin : dÃ©tail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function show(Agent $agent)
+    {
+        $agent->load(['contrats.client', 'sinistres']);
+        return view('admin.agents.show', compact('agent'));
+    }
+
+    // â”€â”€ CRUD Admin : formulaire Ã©dition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function edit(Agent $agent)
+    {
+        return view('admin.agents.edit', compact('agent'));
+    }
+
+    // â”€â”€ CRUD Admin : mise Ã  jour â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function update(Request $request, Agent $agent)
+    {
+        $data = $request->validate([
+            'nom'           => ['required', 'string', 'max:100'],
+            'prenom'        => ['required', 'string', 'max:100'],
+            'telephone'     => ['nullable', 'string', 'max:20'],
+            'zone_couverte' => ['nullable', 'string'],
+            'is_active'     => ['sometimes', 'boolean'],
+        ]);
+
+        $agent->update([
+            ...$data,
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return redirect()->route('admin.agents.show', $agent)
+            ->with('success', 'Agent mis Ã  jour.');
+    }
+
+    // â”€â”€ CRUD Admin : suppression â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function destroy(Agent $agent)
+    {
+        $agent->delete();
+        return redirect()->route('admin.agents.index')
+            ->with('success', 'Agent supprimÃ©.');
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\AssuranceController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Assurance;
+use Illuminate\Http\Request;
+
+class AssuranceController extends Controller
+{
+    // â”€â”€ Catalogue public â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function catalog()
+    {
+        // GroupÃ©es par type pour la vue publique
+        $assurances = Assurance::actives()->get()->groupBy('type');
+        return view('assurances.index', compact('assurances'));
+    }
+
+    // â”€â”€ Liste admin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        // GroupÃ©es par type pour admin.assurances.index
+        $assurances = Assurance::withoutGlobalScopes()->latest()->get()->groupBy('type');
+        return view('admin.assurances.index', compact('assurances'));
+    }
+
+    // â”€â”€ Formulaire crÃ©ation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function create()
+    {
+        return view('admin.assurances.create');
+    }
+
+    // â”€â”€ Enregistrement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'type'               => ['required', 'in:auto,habitat,vie'],
+            'nom'                => ['required', 'string', 'max:255'],
+            'description'        => ['nullable', 'string'],
+            'prix_mensuel'       => ['required', 'numeric', 'min:0'],
+            'prix_annuel'        => ['required', 'numeric', 'min:0'],
+            'montant_couverture' => ['required', 'numeric', 'min:0'],
+            'is_active'          => ['sometimes', 'boolean'],
+            'garanties_text'     => ['nullable', 'string'],
+        ]);
+
+        // Convertir le texte en tableau de garanties
+        $garanties = null;
+        if (!empty($data['garanties_text'])) {
+            $garanties = array_filter(
+                array_map('trim', explode("\n", $data['garanties_text']))
+            );
+            $garanties = array_values($garanties);
+        }
+
+        $assurance = Assurance::create([
+            'type'               => $data['type'],
+            'nom'                => $data['nom'],
+            'description'        => $data['description'] ?? null,
+            'prix_mensuel'       => $data['prix_mensuel'],
+            'prix_annuel'        => $data['prix_annuel'],
+            'montant_couverture' => $data['montant_couverture'],
+            'is_active'          => $request->boolean('is_active', true),
+            'garanties'          => $garanties,
+        ]);
+
+        return redirect()->route('admin.assurances.index')
+            ->with('success', 'Assurance crÃ©Ã©e avec succÃ¨s.');
+    }
+
+    // â”€â”€ Affichage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function show(Assurance $assurance)
+    {
+        $assurance->load('contrats');
+        return view('admin.assurances.show', compact('assurance'));
+    }
+
+    // â”€â”€ Formulaire Ã©dition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function edit(Assurance $assurance)
+    {
+        return view('admin.assurances.edit', compact('assurance'));
+    }
+
+    // â”€â”€ Mise Ã  jour â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function update(Request $request, Assurance $assurance)
+    {
+        $data = $request->validate([
+            'nom'                => ['required', 'string', 'max:255'],
+            'description'        => ['nullable', 'string'],
+            'prix_mensuel'       => ['required', 'numeric', 'min:0'],
+            'prix_annuel'        => ['required', 'numeric', 'min:0'],
+            'montant_couverture' => ['required', 'numeric', 'min:0'],
+            'is_active'          => ['sometimes', 'boolean'],
+            'garanties_text'     => ['nullable', 'string'],
+        ]);
+
+        $garanties = null;
+        if (!empty($data['garanties_text'])) {
+            $garanties = array_values(array_filter(
+                array_map('trim', explode("\n", $data['garanties_text']))
+            ));
+        }
+
+        $assurance->update([
+            'nom'                => $data['nom'],
+            'description'        => $data['description'] ?? null,
+            'prix_mensuel'       => $data['prix_mensuel'],
+            'prix_annuel'        => $data['prix_annuel'],
+            'montant_couverture' => $data['montant_couverture'],
+            'is_active'          => $request->boolean('is_active', true),
+            'garanties'          => $garanties,
+        ]);
+
+        return redirect()->route('admin.assurances.index')
+            ->with('success', 'Assurance mise Ã  jour.');
+    }
+
+    // â”€â”€ Suppression â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function destroy(Assurance $assurance)
+    {
+        $assurance->delete();
+        return redirect()->route('admin.assurances.index')
+            ->with('success', 'Assurance supprimÃ©e.');
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\AutoController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Auto;
+use Illuminate\Http\Request;
+
+class AutoController extends Controller
+{
+    // â”€â”€ Catalogue public des assurances Auto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        $autos = Auto::actifs()->get();
+        return view('assurances.auto.index', compact('autos'));
+    }
+
+    public function show(Auto $auto)
+    {
+        return view('assurances.auto.show', compact('auto'));
+    }
+
+    // â”€â”€ Calcul de prime dynamique (appelÃ© via formulaire) â”€â”€â”€â”€â”€
+    public function calculerPrime(Request $request)
+    {
+        $data = $request->validate([
+            'assurance_id'   => ['required', 'exists:assurances,id'],
+            'annee_vehicule' => ['required', 'integer', 'min:1990', 'max:' . now()->year],
+            'formule'        => ['required', 'in:tiers,tiers_etendu,tous_risques'],
+        ]);
+
+        $auto  = Auto::findOrFail($data['assurance_id']);
+        $prime = $auto->calculerPrime($data['annee_vehicule'], $data['formule']);
+
+        return response()->json([
+            'prime_mensuelle' => number_format($prime, 2),
+            'prime_annuelle'  => number_format($prime * 12 * 0.9, 2), // 10% rÃ©duction annuel
+        ]);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\ClientController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Client;
+use App\Models\Contrat;
+use App\Models\Sinistre;
+use App\Models\Payment;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class ClientController extends Controller
+{
+   // â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function dashboard()
+    {
+        /** @var \App\Models\Client $client */
+        $client = Auth::user();
+
+        $contrats         = $client->contrats()->with('assurance')->latest()->get();
+        $contratsActifs   = $contrats->where('statut', 'actif');
+        $sinistresEnCours = $client->sinistres()
+            ->whereNotIn('statut', ['indemnise', 'refuse'])->count();
+
+        return view('client.dashboard', compact(
+            'client', 'contrats', 'contratsActifs', 'sinistresEnCours'
+        ));
+    }
+
+    // â”€â”€ Liste des clients (Admin/Agent) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        $clients = Client::latest()->paginate(15);
+        return view('admin.clients.index', compact('clients'));
+    }
+
+    public function show(Client $client)
+    {
+        $client->load(['contrats.assurance', 'sinistres', 'payments']);
+        return view('admin.clients.show', compact('client'));
+    }
+
+    public function edit(Client $client)
+    {
+        return view('admin.clients.edit', compact('client'));
+    }
+
+    public function update(Request $request, Client $client)
+    {
+        $data = $request->validate([
+            'nom'       => ['required', 'string', 'max:100'],
+            'prenom'    => ['required', 'string', 'max:100'],
+            'telephone' => ['required', 'string', 'max:20'],
+            'adresse'   => ['nullable', 'string'],
+            'is_active' => ['boolean'],
+        ]);
+
+        $client->update($data);
+
+        return redirect()->route('admin.clients.show', $client)
+            ->with('success', 'Client mis Ã  jour.');
+    }
+
+    public function destroy(Client $client)
+    {
+        $client->delete();
+        return redirect()->route('admin.clients.index')
+            ->with('success', 'Client supprimÃ©.');
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\ContratController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Assurance;
+use App\Models\Contrat;
+use App\Models\Client;
+use App\Models\Agent;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class ContratController extends Controller
+{
+    // â”€â”€ Liste â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $query = match($user->type) {
+            'admin'  => Contrat::with(['client', 'assurance', 'agent']),
+            'agent'  => Contrat::where('agent_id', $user->id)->with(['client', 'assurance']),
+            default  => Contrat::where('client_id', $user->id)->with('assurance'),
+        };
+
+        if ($request->filled('statut') && $request->statut !== 'tous') {
+            $query->where('statut', $request->statut);
+        }
+
+        if ($request->filled('q')) {
+            $query->where('numero_contrat', 'like', '%' . $request->q . '%');
+        }
+
+        $contrats = $query->latest()->paginate(15);
+
+        $view = match($user->type) {
+            'admin'  => 'admin.contrats.index',
+            'agent'  => 'agent.contrats.index',
+            default  => 'client.contrats.index',
+        };
+
+        return view($view, compact('contrats'));
+    }
+
+    // â”€â”€ Formulaire crÃ©ation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function create()
+    {
+        $assurances = Assurance::actives()->get();
+        return view('client.contrats.create', compact('assurances'));
+    }
+
+    // â”€â”€ Enregistrement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'assurance_id' => ['required', 'exists:assurances,id'],
+            'date_debut'   => ['required', 'date', 'after_or_equal:today'],
+            'periodicite'  => ['required', 'in:mensuel,trimestriel,annuel'],
+        ]);
+
+        $assurance = Assurance::findOrFail($data['assurance_id']);
+
+        // Calcul prime selon pÃ©riodicitÃ©
+        $prime = match($data['periodicite']) {
+            'trimestriel' => $assurance->prix_mensuel * 3 * 0.95,
+            'annuel'      => $assurance->prix_annuel  * 0.9,
+            default       => $assurance->prix_mensuel,
+        };
+
+        // Calcul date de fin
+        $dateFin = match($data['periodicite']) {
+            'trimestriel' => \Carbon\Carbon::parse($data['date_debut'])->addMonths(3),
+            'annuel'      => \Carbon\Carbon::parse($data['date_debut'])->addYear(),
+            default       => \Carbon\Carbon::parse($data['date_debut'])->addMonth(),
+        };
+
+        // Assigner un agent disponible (le moins chargÃ©)
+        $agent = Agent::withoutGlobalScopes()
+            ->where('is_active', true)
+            ->withCount(['contrats' => fn($q) => $q->where('statut', 'actif')])
+            ->orderBy('contrats_count')
+            ->first();
+
+        $contrat = Contrat::create([
+            'client_id'    => Auth::id(),
+            'assurance_id' => $assurance->id,
+            'agent_id'     => $agent?->id,
+            'date_debut'   => $data['date_debut'],
+            'date_fin'     => $dateFin,
+            'periodicite'  => $data['periodicite'],
+            'prime'        => round($prime, 2),
+            'statut'       => 'en_attente',
+        ]);
+
+        return redirect()->route('client.contrats.show', $contrat)
+            ->with('success', 'Contrat crÃ©Ã© ! ProcÃ©dez au paiement pour l\'activer.');
+    }
+
+    // â”€â”€ DÃ©tail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function show(Contrat $contrat)
+    {
+        $this->authorizeContrat($contrat);
+        $contrat->load(['assurance', 'client', 'agent', 'payments', 'sinistres']);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin'  => 'admin.contrats.show',
+            'agent'  => 'agent.contrats.show',
+            default  => 'client.contrats.show',
+        };
+
+        return view($view, compact('contrat'));
+    }
+
+    // â”€â”€ Formulaire Ã©dition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function edit(Contrat $contrat)
+    {
+        $this->authorizeContrat($contrat);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin' => 'admin.contrats.edit',
+            default => 'agent.contrats.edit',
+        };
+
+        return view($view, compact('contrat'));
+    }
+
+    // â”€â”€ Mise Ã  jour â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function update(Request $request, Contrat $contrat)
+    {
+        $this->authorizeContrat($contrat);
+
+        $data = $request->validate([
+            'statut' => ['required', 'in:en_attente,actif,suspendu,resiliÃ©,expire'],
+            'notes'  => ['nullable', 'string'],
+        ]);
+
+        $contrat->update($data);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $route = match($user->type) {
+            'admin' => 'admin.contrats.show',
+            default => 'agent.contrats.show',
+        };
+
+        return redirect()->route($route, $contrat)
+            ->with('success', 'Contrat mis Ã  jour.');
+    }
+
+    // â”€â”€ Suppression (admin seulement) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function destroy(Contrat $contrat)
+    {
+        abort_unless(Auth::user()->type === 'admin', 403);
+        $contrat->delete();
+        return redirect()->route('admin.contrats.index')
+            ->with('success', 'Contrat supprimÃ©.');
+    }
+
+    // â”€â”€ SÃ©curitÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    private function authorizeContrat(Contrat $contrat): void
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $autorise = match($user->type) {
+            'admin'  => true,
+            'agent'  => $contrat->agent_id === $user->id,
+            default  => $contrat->client_id === $user->id,
+        };
+
+        abort_unless($autorise, 403);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\Controller.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+abstract class Controller
+{
+    //
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\HabitatController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Habitat;
+use Illuminate\Http\Request;
+
+class HabitatController extends Controller
+{
+    // â”€â”€ Catalogue public des assurances Habitat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        $habitats = Habitat::actifs()->get();
+        return view('assurances.habitat.index', compact('habitats'));
+    }
+
+    public function show(Habitat $habitat)
+    {
+        return view('assurances.habitat.show', compact('habitat'));
+    }
+
+    // â”€â”€ Calcul de prime dynamique â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function calculerPrime(Request $request)
+    {
+        $data = $request->validate([
+            'assurance_id' => ['required', 'exists:assurances,id'],
+            'surface_m2'   => ['required', 'numeric', 'min:10', 'max:1000'],
+        ]);
+
+        $habitat = Habitat::findOrFail($data['assurance_id']);
+        $prime   = $habitat->calculerPrime($data['surface_m2']);
+
+        return response()->json([
+            'prime_mensuelle' => number_format($prime, 2),
+            'prime_annuelle'  => number_format($prime * 12 * 0.9, 2),
+        ]);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\PaymentController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Contrat;
+use App\Models\Payment;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
+
+class PaymentController extends Controller
+{
+    // â”€â”€ Liste â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $payments = match($user->type) {
+            'admin' => Payment::with(['client', 'contrat.assurance'])->latest()->paginate(15),
+            default => Payment::where('client_id', $user->id)
+                              ->with('contrat.assurance')
+                              ->latest()
+                              ->paginate(15),
+        };
+
+        $view = match($user->type) {
+            'admin' => 'admin.payments.index',
+            default => 'client.payments.index',
+        };
+
+        return view($view, compact('payments'));
+    }
+
+    // â”€â”€ DÃ©tail reÃ§u â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function show(Payment $payment)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // Seul le client propriÃ©taire ou un admin peut voir
+        abort_unless(
+            $payment->client_id === $user->id || $user->type === 'admin',
+            403
+        );
+
+        $payment->load('contrat.assurance');
+
+        return view('client.payments.show', compact('payment'));
+    }
+
+    // â”€â”€ Initier un paiement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'contrat_id'    => ['required', 'exists:contrats,id'],
+            'methode'       => ['required', 'in:wave,orange_money,free_money,simulation'],
+            'numero_payeur' => ['required_unless:methode,simulation', 'nullable', 'string', 'max:20'],
+        ]);
+
+        $contrat = Contrat::findOrFail($data['contrat_id']);
+
+        // VÃ©rifier que le contrat appartient au client connectÃ©
+        abort_unless($contrat->client_id === Auth::id(), 403);
+
+        $payment = Payment::create([
+            'contrat_id'    => $contrat->id,
+            'client_id'     => Auth::id(),
+            'montant'       => $contrat->prime,
+            'methode'       => $data['methode'],
+            'numero_payeur' => $data['numero_payeur'] ?? null,
+            'periode_debut' => $contrat->date_debut,
+            'periode_fin'   => $contrat->date_fin,
+            'statut'        => 'en_attente',
+        ]);
+
+        if ($data['methode'] === 'simulation') {
+            return $this->simulerPaiement($payment, $contrat);
+        }
+
+        return redirect()->route('client.contrats.show', $contrat)
+            ->with('info', 'Paiement initiÃ©. En attente de confirmation.');
+    }
+
+    // â”€â”€ Simulation paiement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    private function simulerPaiement(Payment $payment, Contrat $contrat)
+    {
+        $succes = rand(1, 10) <= 9; // 90% de succÃ¨s
+
+        $payment->update([
+            'statut'         => $succes ? 'succes' : 'echec',
+            'transaction_id' => 'SIM-' . strtoupper(Str::random(8)),
+            'paye_le'        => $succes ? now() : null,
+            'payload_retour' => [
+                'simulation' => true,
+                'resultat'   => $succes ? 'succes' : 'echec',
+                'horodatage' => now()->toDateTimeString(),
+            ],
+        ]);
+
+        if ($succes) {
+            $contrat->update(['statut' => 'actif']);
+            return redirect()->route('client.contrats.show', $contrat)
+                ->with('success', 'âœ… Paiement simulÃ© avec succÃ¨s ! Contrat activÃ©.');
+        }
+
+        return redirect()->route('client.contrats.show', $contrat)
+            ->with('error', 'âŒ Ã‰chec du paiement simulÃ©. Veuillez rÃ©essayer.');
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\SinistreController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Contrat;
+use App\Models\Sinistre;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class SinistreController extends Controller
+{
+    // â”€â”€ Liste â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $query = match($user->type) {
+            'admin' => Sinistre::with(['client', 'contrat.assurance', 'agent']),
+            'agent' => Sinistre::where('agent_id', $user->id)->with(['client', 'contrat']),
+            default => Sinistre::where('client_id', $user->id)->with('contrat.assurance'),
+        };
+
+        if ($request->filled('statut') && $request->statut !== 'tous') {
+            $query->where('statut', $request->statut);
+        }
+
+        $sinistres = $query->latest()->paginate(15);
+
+        $view = match($user->type) {
+            'admin' => 'admin.sinistres.index',
+            'agent' => 'agent.sinistres.index',
+            default => 'client.sinistres.index',
+        };
+
+        return view($view, compact('sinistres'));
+    }
+
+    // â”€â”€ Formulaire dÃ©claration (client) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function create()
+    {
+        $contrats = Contrat::where('client_id', Auth::id())
+            ->where('statut', 'actif')
+            ->with('assurance')
+            ->get();
+
+        return view('client.sinistres.create', compact('contrats'));
+    }
+
+    // â”€â”€ Enregistrement dÃ©claration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'contrat_id'      => ['required', 'exists:contrats,id'],
+            'date_sinistre'   => ['required', 'date', 'before_or_equal:today'],
+            'lieu'            => ['nullable', 'string', 'max:255'],
+            'description'     => ['required', 'string', 'min:20'],
+            'montant_reclame' => ['nullable', 'numeric', 'min:0'],
+            'documents.*'     => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+        ]);
+
+        // VÃ©rifier que le contrat appartient au client et est actif
+        $contrat = Contrat::where('id', $data['contrat_id'])
+            ->where('client_id', Auth::id())
+            ->where('statut', 'actif')
+            ->firstOrFail();
+
+        // Upload documents
+        $documents = [];
+        if ($request->hasFile('documents')) {
+            foreach ($request->file('documents') as $file) {
+                $documents[] = $file->store('sinistres', 'public');
+            }
+        }
+
+        Sinistre::create([
+            ...$data,
+            'client_id' => Auth::id(),
+            'documents' => $documents,
+            'statut'    => 'declare',
+        ]);
+
+        return redirect()->route('client.sinistres.index')
+            ->with('success', 'Sinistre dÃ©clarÃ© avec succÃ¨s. Un agent vous contactera.');
+    }
+
+    // â”€â”€ DÃ©tail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function show(Sinistre $sinistre)
+    {
+        $this->authorizeSinistre($sinistre);
+        $sinistre->load(['contrat.assurance', 'client', 'agent']);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin' => 'admin.sinistres.show',
+            'agent' => 'agent.sinistres.show',
+            default => 'client.sinistres.show',
+        };
+
+        return view($view, compact('sinistre'));
+    }
+
+    // â”€â”€ Formulaire instruction (agent/admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function edit(Sinistre $sinistre)
+    {
+        $this->authorizeSinistre($sinistre);
+        $sinistre->load(['contrat.assurance', 'client']);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin' => 'admin.sinistres.edit',
+            default => 'agent.sinistres.edit',
+        };
+
+        return view($view, compact('sinistre'));
+    }
+
+    // â”€â”€ Mise Ã  jour instruction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function update(Request $request, Sinistre $sinistre)
+    {
+        $this->authorizeSinistre($sinistre);
+
+        $data = $request->validate([
+            'statut'          => ['required', 'in:declare,en_instruction,accepte,refuse,indemnise'],
+            'montant_accorde' => ['nullable', 'numeric', 'min:0'],
+            'notes_agent'     => ['nullable', 'string'],
+        ]);
+
+        $sinistre->update([
+            ...$data,
+            'agent_id' => Auth::id(),
+        ]);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $route = match($user->type) {
+            'admin' => 'admin.sinistres.show',
+            default => 'agent.sinistres.show',
+        };
+
+        return redirect()->route($route, $sinistre)
+            ->with('success', 'Sinistre mis Ã  jour.');
+    }
+
+    // â”€â”€ SÃ©curitÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    private function authorizeSinistre(Sinistre $sinistre): void
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $autorise = match($user->type) {
+            'admin' => true,
+            'agent' => $sinistre->agent_id === $user->id || $sinistre->agent_id === null,
+            default => $sinistre->client_id === $user->id,
+        };
+
+        abort_unless($autorise, 403);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\UserController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+
+class UserController extends Controller
+{
+    // â”€â”€ Profil de l'utilisateur connectÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function profil()
+    {
+        return view('profil', ['user' => Auth::user()]);
+    }
+
+    public function updateProfil(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $data = $request->validate([
+            'nom'       => ['required', 'string', 'max:100'],
+            'prenom'    => ['required', 'string', 'max:100'],
+            'telephone' => ['required', 'string', 'max:20'],
+            'adresse'   => ['nullable', 'string', 'max:255'],
+            'photo'     => ['nullable', 'image', 'max:2048'],
+        ]);
+
+        if ($request->hasFile('photo')) {
+            $data['photo'] = $request->file('photo')->store('avatars', 'public');
+        }
+
+        $user->update($data);
+
+        return back()->with('success', 'Profil mis Ã  jour.');
+    }
+
+    // â”€â”€ Changement de mot de passe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function updatePassword(Request $request)
+    {
+        $request->validate([
+            'ancien_password'  => ['required'],
+            'password'         => ['required', 'min:8', 'confirmed'],
+        ]);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        if (!Hash::check($request->ancien_password, $user->password)) {
+            return back()->withErrors(['ancien_password' => 'Mot de passe actuel incorrect.']);
+        }
+
+        $user->update([
+            'password' => Hash::make($request->password),
+        ]);
+
+        return back()->with('success', 'Mot de passe modifiÃ©.');
+    }
+
+    // â”€â”€ Liste complÃ¨te (Admin uniquement) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        $users = User::latest()->paginate(20);
+        return view('admin.users.index', compact('users'));
+    }
+
+    public function destroy(User $user)
+    {
+        abort_if($user->id === Auth::id(), 403, 'Impossible de se supprimer soi-mÃªme.');
+        $user->delete();
+        return back()->with('success', 'Utilisateur supprimÃ©.');
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Controllers\VieController.php ===
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Vie;
+use Illuminate\Http\Request;
+
+class VieController extends Controller
+{
+    // â”€â”€ Catalogue public des assurances Vie â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function index()
+    {
+        $vies = Vie::actifs()->get();
+        return view('assurances.vie.index', compact('vies'));
+    }
+
+    public function show(Vie $vie)
+    {
+        return view('assurances.vie.show', compact('vie'));
+    }
+
+    // â”€â”€ Calcul de prime dynamique â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public function calculerPrime(Request $request)
+    {
+        $data = $request->validate([
+            'assurance_id' => ['required', 'exists:assurances,id'],
+            'age'          => ['required', 'integer', 'min:18', 'max:70'],
+        ]);
+
+        $vie   = Vie::findOrFail($data['assurance_id']);
+
+        // VÃ©rifier que l'Ã¢ge est dans la tranche acceptÃ©e
+        abort_if(
+            $data['age'] < $vie->age_min || $data['age'] > $vie->age_max,
+            422,
+            "Votre Ã¢ge ({$data['age']} ans) n'est pas Ã©ligible pour cette offre."
+        );
+
+        $prime = $vie->calculerPrime($data['age']);
+
+        return response()->json([
+            'prime_mensuelle' => number_format($prime, 2),
+            'prime_annuelle'  => number_format($prime * 12 * 0.9, 2),
+            'capital_garanti' => number_format($vie->capital_garanti, 2),
+            'duree_annees'    => $vie->duree_annees,
+        ]);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\app\Http\Middleware\RoleMiddleware.php ===
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class RoleMiddleware
+{
+    /**
+     * Handle an incoming request.
+     *
+     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     */
+    public function handle(Request $request, Closure $next, string ...$roles): Response
+    {
+
+        $user = $request->user();
+
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        if (!in_array($user->type, $roles, true)) {
+            abort(403, 'AccÃ¨s non autorisÃ©.');
+        }
+
+        return $next($request);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\routes\console.php ===
+<?php
+
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
+
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\routes\web.php ===
+<?php
+
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AgentController;
+use App\Http\Controllers\AssuranceController;
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\AutoController;
+use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ContratController;
+use App\Http\Controllers\HabitatController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\SinistreController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\VieController;
+use Illuminate\Support\Facades\Route;
+
+// â”€â”€ Page d'accueil â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::get('/', function () {
+    return view('welcome');
+})->name('home');
+
+// â”€â”€ Catalogue public â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::get('/assurances', [AssuranceController::class, 'catalog'])->name('assurances.index');
+
+// â”€â”€ Calcul de prime dynamique (public) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::post('/assurances/auto/prime',    [AutoController::class,    'calculerPrime'])->name('auto.prime');
+Route::post('/assurances/habitat/prime', [HabitatController::class, 'calculerPrime'])->name('habitat.prime');
+Route::post('/assurances/vie/prime',     [VieController::class,     'calculerPrime'])->name('vie.prime');
+
+// â”€â”€ Authentification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::middleware('guest')->group(function () {
+    Route::get('/inscription',  [AuthController::class, 'showRegister'])->name('register');
+    Route::post('/inscription', [AuthController::class, 'register']);
+    Route::get('/connexion',    [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/connexion',   [AuthController::class, 'login']);
+});
+
+Route::post('/deconnexion', [AuthController::class, 'logout'])
+    ->name('logout')
+    ->middleware('auth');
+
+// â”€â”€ Profil (tous rÃ´les connectÃ©s) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::middleware('auth')->group(function () {
+    Route::get('/profil',          [UserController::class, 'profil'])->name('profil');
+    Route::put('/profil',          [UserController::class, 'updateProfil'])->name('profil.update');
+    Route::put('/profil/password', [UserController::class, 'updatePassword'])->name('profil.password');
+});
+
+// â”€â”€ Espace Client â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::middleware(['auth', 'role:client'])
+    ->prefix('client')
+    ->name('client.')
+    ->group(function () {
+        Route::get('/dashboard', [ClientController::class, 'dashboard'])->name('dashboard');
+
+        Route::resource('contrats',  ContratController::class)
+            ->only(['index', 'show', 'create', 'store']);
+
+        Route::resource('payments',  PaymentController::class)
+            ->only(['index', 'show', 'store']);
+
+        Route::resource('sinistres', SinistreController::class)
+            ->only(['index', 'show', 'create', 'store']);
+    });
+
+// â”€â”€ Espace Agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::middleware(['auth', 'role:agent'])
+    ->prefix('agent')
+    ->name('agent.')
+    ->group(function () {
+        Route::get('/dashboard', [AgentController::class, 'dashboard'])->name('dashboard');
+
+        Route::resource('contrats',  ContratController::class)
+            ->only(['index', 'show', 'edit', 'update']);
+
+        Route::resource('sinistres', SinistreController::class)
+            ->only(['index', 'show', 'edit', 'update']);
+
+        // Clients de l'agent
+        Route::get('/clients',        [AgentController::class, 'clientsIndex'])->name('clients.index');
+        Route::get('/clients/{client}', [AgentController::class, 'clientShow'])->name('clients.show');
+    });
+
+// â”€â”€ Espace Admin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+Route::middleware(['auth', 'role:admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
+
+        Route::resource('clients',    ClientController::class)
+            ->except(['create', 'store']);
+
+        Route::resource('agents',     AgentController::class);
+
+        Route::resource('assurances', AssuranceController::class);
+
+        Route::resource('contrats',   ContratController::class)
+            ->except(['create', 'store']);
+
+        Route::resource('payments',   PaymentController::class)
+            ->only(['index', 'show']);
+
+        Route::resource('sinistres',  SinistreController::class)
+            ->except(['create', 'store']);
+    });
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\migrations\0001_01_01_000000_create_users_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+
+            //  STI 
+            $table->enum('type', ['admin', 'agent', 'client'])->default('client');
+
+            //  IdentitÃ© commune 
+            $table->string('nom');
+            $table->string('prenom');
+            $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password');
+            $table->string('telephone', 20)->nullable();
+            $table->string('adresse')->nullable();
+            $table->string('photo')->nullable();
+
+             //  Champs spÃ©cifiques Client 
+            $table->date('date_naissance')->nullable();
+            $table->string('cin', 30)->nullable()->comment('Carte IdentitÃ© Nationale');
+            $table->string('profession')->nullable();
+
+            //  Champs spÃ©cifiques Agent 
+            $table->string('matricule')->nullable()->unique();
+            $table->string('zone_couverte')->nullable();
+
+            // â”€â”€ Statut & sÃ©curitÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->boolean('is_active')->default(true);
+            $table->rememberToken();
+
+            // â”€â”€ Index â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->index('type');
+            $table->index('email');
+
+            $table->timestamps();
+        });
+
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token');
+            $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('sessions');
+    }
+};
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\migrations\0001_01_01_000001_create_cache_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('cache', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->mediumText('value');
+            $table->integer('expiration')->index();
+        });
+
+        Schema::create('cache_locks', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->string('owner');
+            $table->integer('expiration')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('cache');
+        Schema::dropIfExists('cache_locks');
+    }
+};
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\migrations\0001_01_01_000002_create_jobs_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('queue')->index();
+            $table->longText('payload');
+            $table->unsignedTinyInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
+        });
+
+        Schema::create('job_batches', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('name');
+            $table->integer('total_jobs');
+            $table->integer('pending_jobs');
+            $table->integer('failed_jobs');
+            $table->longText('failed_job_ids');
+            $table->mediumText('options')->nullable();
+            $table->integer('cancelled_at')->nullable();
+            $table->integer('created_at');
+            $table->integer('finished_at')->nullable();
+        });
+
+        Schema::create('failed_jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('uuid')->unique();
+            $table->text('connection');
+            $table->text('queue');
+            $table->longText('payload');
+            $table->longText('exception');
+            $table->timestamp('failed_at')->useCurrent();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('jobs');
+        Schema::dropIfExists('job_batches');
+        Schema::dropIfExists('failed_jobs');
+    }
+};
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\migrations\2026_03_06_020236_create_assurances_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('assurances', function (Blueprint $table) {
+            $table->id();
+
+            // â”€â”€ STI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->enum('type', ['auto', 'habitat', 'vie']);
+
+            // â”€â”€ Infos communes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->string('nom');
+            $table->text('description')->nullable();
+            $table->decimal('prix_mensuel', 10, 2);
+            $table->decimal('prix_annuel', 10, 2);
+            $table->decimal('montant_couverture', 15, 2)->comment('Plafond de remboursement');
+            $table->boolean('is_active')->default(true);
+            $table->json('garanties')->nullable()->comment('Liste des garanties incluses');
+
+            // â”€â”€ Champs spÃ©cifiques Auto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->string('marque_vehicule')->nullable();
+            $table->string('modele_vehicule')->nullable();
+            $table->year('annee_vehicule')->nullable();
+            $table->enum('type_vehicule', ['berline', 'suv', 'moto', 'camion', 'autre'])->nullable();
+            $table->enum('formule_auto', ['tiers', 'tiers_etendu', 'tous_risques'])->nullable();
+
+            // â”€â”€ Champs spÃ©cifiques Habitat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->enum('type_habitat', ['appartement', 'maison', 'villa', 'studio'])->nullable();
+            $table->decimal('surface_m2', 8, 2)->nullable();
+            $table->boolean('couvre_contenu')->default(false)->comment('Couvre le mobilier');
+            $table->boolean('couvre_structure')->default(false)->comment('Couvre les murs');
+
+            // â”€â”€ Champs spÃ©cifiques Vie â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->integer('duree_annees')->nullable()->comment('DurÃ©e du contrat vie');
+            $table->decimal('capital_garanti', 15, 2)->nullable();
+            $table->integer('age_min')->nullable();
+            $table->integer('age_max')->nullable();
+
+
+            $table->index('type');
+            $table->index('is_active');
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('assurances');
+    }
+};
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\migrations\2026_03_06_020302_create_contrats_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('contrats', function (Blueprint $table) {
+            $table->id();
+
+            $table->foreignId('client_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('assurance_id')->constrained('assurances')->onDelete('cascade');
+            $table->foreignId('agent_id')->nullable()->constrained('users')->onDelete('set null');
+
+            // â”€â”€ NumÃ©ro unique du contrat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->string('numero_contrat')->unique();
+
+            // â”€â”€ PÃ©riode de couverture â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->date('date_debut');
+            $table->date('date_fin');
+            $table->enum('periodicite', ['mensuel', 'trimestriel', 'annuel'])->default('mensuel');
+
+            // â”€â”€ Tarification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->decimal('prime', 10, 2)->comment('Montant Ã  payer par pÃ©riode');
+            $table->decimal('franchise', 10, 2)->default(0)->comment('Part Ã  charge du client en cas sinistre');
+
+            // â”€â”€ Statut â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->enum('statut', [
+                'en_attente',   // souscription non encore payÃ©e
+                'actif',        // payÃ© et en cours
+                'suspendu',     // paiement en retard
+                'resiliÃ©',      // annulÃ©
+                'expire',       // date_fin dÃ©passÃ©e
+            ])->default('en_attente');
+
+            // â”€â”€ Documents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->string('document_path')->nullable()->comment('PDF du contrat signÃ©');
+            $table->json('documents_supplementaires')->nullable();
+
+            $table->text('notes')->nullable();
+
+            $table->index(['client_id', 'statut']);
+            $table->index('numero_contrat');
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('contrats');
+    }
+};
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\migrations\2026_03_06_020303_create_payments_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('payments', function (Blueprint $table) {
+            $table->id();
+
+            $table->foreignId('contrat_id')->constrained('contrats')->onDelete('cascade');
+            $table->foreignId('client_id')->constrained('users')->onDelete('cascade');
+
+            // â”€â”€ RÃ©fÃ©rence de transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->string('reference')->unique()->comment('RÃ©fÃ©rence interne unique');
+            $table->string('transaction_id')->nullable()->comment('ID retournÃ© par la passerelle');
+
+            // â”€â”€ Montant â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->decimal('montant', 10, 2);
+            $table->string('devise', 5)->default('FCFA');
+
+            // â”€â”€ Mode de paiement (simulation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->enum('methode', [
+                'wave',
+                'orange_money',
+                'free_money',
+                'paydunya',
+                'simulation',   // pour les tests / dÃ©mo
+            ])->default('simulation');
+
+            $table->string('numero_payeur', 20)->nullable()->comment('NumÃ©ro de tÃ©lÃ©phone utilisÃ©');
+
+            // â”€â”€ Statut â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->enum('statut', [
+                'en_attente',
+                'succes',
+                'echec',
+                'rembourse',
+            ])->default('en_attente');
+
+            // â”€â”€ PÃ©riode couverte par ce paiement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->date('periode_debut')->nullable();
+            $table->date('periode_fin')->nullable();
+
+            // â”€â”€ RÃ©ponse brute de la passerelle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->json('payload_retour')->nullable()->comment('RÃ©ponse JSON de l\'API paiement');
+
+            $table->timestamp('paye_le')->nullable();
+
+            $table->index(['contrat_id', 'statut']);
+            $table->index('reference');
+
+            $table->timestamps();
+
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('payments');
+    }
+};
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\migrations\2026_03_06_020305_create_sinistres_table.php ===
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('sinistres', function (Blueprint $table) {
+            $table->id();
+
+            $table->foreignId('contrat_id')->constrained('contrats')->onDelete('cascade');
+            $table->foreignId('client_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('agent_id')->nullable()->constrained('users')->onDelete('set null')
+                  ->comment('Agent chargÃ© du dossier');
+
+            $table->string('numero_sinistre')->unique();
+
+            // â”€â”€ Description de l'Ã©vÃ©nement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->date('date_sinistre');
+            $table->string('lieu')->nullable();
+            $table->text('description');
+            $table->decimal('montant_reclame', 10, 2)->nullable();
+            $table->decimal('montant_accorde', 10, 2)->nullable();
+
+            // â”€â”€ Statut du dossier â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->enum('statut', [
+                'declare',          // vient d'Ãªtre crÃ©Ã©
+                'en_instruction',   // agent examine le dossier
+                'accepte',          // sinistre validÃ©
+                'refuse',           // sinistre refusÃ©
+                'indemnise',        // paiement effectuÃ©
+            ])->default('declare');
+
+            // â”€â”€ PiÃ¨ces jointes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            $table->json('documents')->nullable()->comment('Photos, PV, factures...');
+
+            $table->text('notes_agent')->nullable();
+
+            $table->index(['client_id', 'statut']);
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('sinistres');
+    }
+};
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\database\seeders\DatabaseSeeder.php ===
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\Admin;
+use App\Models\Agent;
+use App\Models\Assurance;
+use App\Models\Client;
+use App\Models\Contrat;
+use App\Models\Payment;
+use App\Models\Sinistre;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+
+class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
+        // â”€â”€ Admin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        Admin::create([
+            'nom'       => 'WADE',
+            'prenom'    => 'Abba',
+            'email'     => 'Abba@assurance.sn',
+            'password'  => Hash::make('passer@2026'),
+            'telephone' => '33 000 00 00',
+            'adresse'   => 'Dakar, Golf',
+            'is_active' => true,
+        ]);
+
+        // â”€â”€ Agents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        $agent1 = Agent::create([
+            'nom'           => 'NDIAYE',
+            'prenom'        => 'Santos',
+            'email'         => 'Santos@assurance.sn',
+            'password'      => Hash::make('passer@2026'),
+            'telephone'     => '77 000 00 00',
+            'adresse'       => 'Dakar, Diamndiadio',
+            'matricule'     => 'AGT-001',
+            'zone_couverte' => 'Dakar',
+            'is_active'     => true,
+        ]);
+
+        $agent2 = Agent::create([
+            'nom'           => 'WADE',
+            'prenom'        => 'Khady',
+            'email'         => 'Khady@assurance.sn',
+            'password'      => Hash::make('passer@2026'),
+            'telephone'     => '76 001 00 00',
+            'adresse'       => 'Darou Khoudoss',
+            'matricule'     => 'AGT-002',
+            'zone_couverte' => 'ThiÃ¨s, Tivaoune',
+            'is_active'     => true,
+        ]);
+
+        // â”€â”€ Clients â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        $client1 = Client::create([
+            'nom'            => 'WADE',
+            'prenom'         => 'Cheikh',
+            'email'          => 'Cheikh@test.sn',
+            'password'       => Hash::make('passer@2026'),
+            'telephone'      => '70 002 00 00',
+            'adresse'        => 'Darou, Mboro',
+            'date_naissance' => '2006-01-02',
+            'cin'            => '2006-00001-12345',
+            'profession'     => 'IngÃ©nieur',
+            'is_active'      => true,
+        ]);
+
+        $client2 = Client::create([
+            'nom'            => 'Wade',
+            'prenom'         => 'Mbacke',
+            'email'          => 'Mbacke@test.sn',
+            'password'       => Hash::make('passer@2026'),
+            'telephone'      => '78 003 00 00',
+            'adresse'        => 'ThiÃ¨s',
+            'date_naissance' => '1999-01-01',
+            'cin'            => '1999-00001-67890',
+            'profession'     => 'laveur',
+            'is_active'      => true,
+        ]);
+
+        // â”€â”€ Assurances â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        $autoTiers = Assurance::create([
+            'type'               => 'auto',
+            'nom'                => 'Auto Tiers Simple',
+            'description'        => 'Couverture responsabilitÃ© civile obligatoire pour tous les vÃ©hicules.',
+            'prix_mensuel'       => 15000,
+            'prix_annuel'        => 162000,
+            'montant_couverture' => 5000000,
+            'is_active'          => true,
+            'garanties'          => [
+                'ResponsabilitÃ© civile',
+                'DÃ©fense et recours',
+                'Assistance 24/7',
+                'Protection juridique',
+            ],
+        ]);
+
+        $autoTousRisques = Assurance::create([
+            'type'               => 'auto',
+            'nom'                => 'Auto Tous Risques',
+            'description'        => 'Couverture complÃ¨te pour votre vÃ©hicule, tous risques inclus.',
+            'prix_mensuel'       => 35000,
+            'prix_annuel'        => 378000,
+            'montant_couverture' => 15000000,
+            'is_active'          => true,
+            'garanties'          => [
+                'ResponsabilitÃ© civile',
+                'Dommages tous accidents',
+                'Vol et incendie',
+                'Bris de glace',
+                'Assistance 24/7',
+                'VÃ©hicule de remplacement',
+            ],
+        ]);
+
+        $habitatEssentiel = Assurance::create([
+            'type'               => 'habitat',
+            'nom'                => 'Habitat Essentiel',
+            'description'        => 'Protection de base pour votre logement contre les risques courants.',
+            'prix_mensuel'       => 8000,
+            'prix_annuel'        => 86400,
+            'montant_couverture' => 10000000,
+            'is_active'          => true,
+            'garanties'          => [
+                'Incendie et explosion',
+                'DÃ©gÃ¢ts des eaux',
+                'Vol et cambriolage',
+                'ResponsabilitÃ© civile',
+            ],
+        ]);
+
+        $habitatPremium = Assurance::create([
+            'type'               => 'habitat',
+            'nom'                => 'Habitat Premium',
+            'description'        => 'Protection complÃ¨te avec couverture Ã©tendue et assistance incluse.',
+            'prix_mensuel'       => 18000,
+            'prix_annuel'        => 194400,
+            'montant_couverture' => 30000000,
+            'is_active'          => true,
+            'garanties'          => [
+                'Incendie et explosion',
+                'DÃ©gÃ¢ts des eaux',
+                'Vol et cambriolage',
+                'Catastrophes naturelles',
+                'Bris de glace',
+                'Assistance mÃ©nagÃ¨re',
+                'ResponsabilitÃ© civile Ã©tendue',
+            ],
+        ]);
+
+        $vieSerenite = Assurance::create([
+            'type'               => 'vie',
+            'nom'                => 'Vie SÃ©rÃ©nitÃ© 20 ans',
+            'description'        => 'Capital garanti Ã  vos bÃ©nÃ©ficiaires en cas de dÃ©cÃ¨s ou d\'invaliditÃ© totale.',
+            'prix_mensuel'       => 12000,
+            'prix_annuel'        => 129600,
+            'montant_couverture' => 20000000,
+            'is_active'          => true,
+            'duree_annees'       => 20,
+            'capital_garanti'    => 20000000,
+            'age_min'            => 18,
+            'age_max'            => 60,
+            'garanties'          => [
+                'DÃ©cÃ¨s toutes causes',
+                'InvaliditÃ© absolue et dÃ©finitive',
+                'Capital garanti',
+                'Double capital accident',
+            ],
+        ]);
+
+        // â”€â”€ Contrats de dÃ©mo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        $contrat1 = Contrat::create([
+            'client_id'    => $client1->id,
+            'assurance_id' => $autoTiers->id,
+            'agent_id'     => $agent1->id,
+            'date_debut'   => now()->subMonths(6),
+            'date_fin'     => now()->addMonths(6),
+            'periodicite'  => 'mensuel',
+            'prime'        => 15000,
+            'franchise'    => 50000,
+            'statut'       => 'actif',
+        ]);
+
+        $contrat2 = Contrat::create([
+            'client_id'    => $client1->id,
+            'assurance_id' => $habitatEssentiel->id,
+            'agent_id'     => $agent1->id,
+            'date_debut'   => now()->subMonths(3),
+            'date_fin'     => now()->addMonths(9),
+            'periodicite'  => 'mensuel',
+            'prime'        => 8000,
+            'franchise'    => 25000,
+            'statut'       => 'en_attente',
+        ]);
+
+        $contrat3 = Contrat::create([
+            'client_id'    => $client2->id,
+            'assurance_id' => $autoTousRisques->id,
+            'agent_id'     => $agent2->id,
+            'date_debut'   => now()->subYear(),
+            'date_fin'     => now()->addMonths(3),
+            'periodicite'  => 'annuel',
+            'prime'        => 378000 * 0.9,
+            'franchise'    => 100000,
+            'statut'       => 'actif',
+        ]);
+
+        // â”€â”€ Paiements de dÃ©mo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        Payment::create([
+            'contrat_id'     => $contrat1->id,
+            'client_id'      => $client1->id,
+            'reference'      => 'PAY-' . strtoupper(Str::random(10)),
+            'montant'        => 15000,
+            'methode'        => 'simulation',
+            'statut'         => 'succes',
+            'paye_le'        => now()->subMonths(6),
+            'periode_debut'  => now()->subMonths(6),
+            'periode_fin'    => now()->subMonths(5),
+            'transaction_id' => 'SIM-' . strtoupper(Str::random(8)),
+        ]);
+
+        Payment::create([
+            'contrat_id'    => $contrat3->id,
+            'client_id'     => $client2->id,
+            'reference'     => 'PAY-' . strtoupper(Str::random(10)),
+            'montant'       => 340200,
+            'methode'       => 'wave',
+            'statut'        => 'succes',
+            'paye_le'       => now()->subYear(),
+            'periode_debut' => now()->subYear(),
+            'periode_fin'   => now(),
+            'transaction_id'=> 'WAV-' . strtoupper(Str::random(8)),
+        ]);
+
+        // â”€â”€ Sinistre de dÃ©mo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        Sinistre::create([
+            'contrat_id'      => $contrat1->id,
+            'client_id'       => $client1->id,
+            'agent_id'        => $agent1->id,
+            'date_sinistre'   => now()->subWeeks(2),
+            'lieu'            => 'Dakar, Autoroute VDN',
+            'description'     => 'Collision avec un autre vÃ©hicule Ã  l\'intersection. Dommages sur le pare-chocs avant et capot.',
+            'montant_reclame' => 850000,
+            'montant_accorde' => 750000,
+            'statut'          => 'accepte',
+            'notes_agent'     => 'Dossier complet. Dommages Ã©valuÃ©s Ã  750 000 XOF aprÃ¨s expertise.',
+        ]);
+    }
+}
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\bootstrap\cache\packages.php ===
+<?php return array (
+  'laravel/pail' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Laravel\\Pail\\PailServiceProvider',
+    ),
+  ),
+  'laravel/sail' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Laravel\\Sail\\SailServiceProvider',
+    ),
+  ),
+  'laravel/tinker' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Laravel\\Tinker\\TinkerServiceProvider',
+    ),
+  ),
+  'nesbot/carbon' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Carbon\\Laravel\\ServiceProvider',
+    ),
+  ),
+  'nunomaduro/collision' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+    ),
+  ),
+  'nunomaduro/termwind' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    ),
+  ),
+);
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\bootstrap\cache\services.php ===
+<?php return array (
+  'providers' => 
+  array (
+    0 => 'Illuminate\\Auth\\AuthServiceProvider',
+    1 => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
+    2 => 'Illuminate\\Bus\\BusServiceProvider',
+    3 => 'Illuminate\\Cache\\CacheServiceProvider',
+    4 => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    5 => 'Illuminate\\Concurrency\\ConcurrencyServiceProvider',
+    6 => 'Illuminate\\Cookie\\CookieServiceProvider',
+    7 => 'Illuminate\\Database\\DatabaseServiceProvider',
+    8 => 'Illuminate\\Encryption\\EncryptionServiceProvider',
+    9 => 'Illuminate\\Filesystem\\FilesystemServiceProvider',
+    10 => 'Illuminate\\Foundation\\Providers\\FoundationServiceProvider',
+    11 => 'Illuminate\\Hashing\\HashServiceProvider',
+    12 => 'Illuminate\\Mail\\MailServiceProvider',
+    13 => 'Illuminate\\Notifications\\NotificationServiceProvider',
+    14 => 'Illuminate\\Pagination\\PaginationServiceProvider',
+    15 => 'Illuminate\\Auth\\Passwords\\PasswordResetServiceProvider',
+    16 => 'Illuminate\\Pipeline\\PipelineServiceProvider',
+    17 => 'Illuminate\\Queue\\QueueServiceProvider',
+    18 => 'Illuminate\\Redis\\RedisServiceProvider',
+    19 => 'Illuminate\\Session\\SessionServiceProvider',
+    20 => 'Illuminate\\Translation\\TranslationServiceProvider',
+    21 => 'Illuminate\\Validation\\ValidationServiceProvider',
+    22 => 'Illuminate\\View\\ViewServiceProvider',
+    23 => 'Laravel\\Pail\\PailServiceProvider',
+    24 => 'Laravel\\Sail\\SailServiceProvider',
+    25 => 'Laravel\\Tinker\\TinkerServiceProvider',
+    26 => 'Carbon\\Laravel\\ServiceProvider',
+    27 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+    28 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    29 => 'App\\Providers\\AppServiceProvider',
+  ),
+  'eager' => 
+  array (
+    0 => 'Illuminate\\Auth\\AuthServiceProvider',
+    1 => 'Illuminate\\Cookie\\CookieServiceProvider',
+    2 => 'Illuminate\\Database\\DatabaseServiceProvider',
+    3 => 'Illuminate\\Encryption\\EncryptionServiceProvider',
+    4 => 'Illuminate\\Filesystem\\FilesystemServiceProvider',
+    5 => 'Illuminate\\Foundation\\Providers\\FoundationServiceProvider',
+    6 => 'Illuminate\\Notifications\\NotificationServiceProvider',
+    7 => 'Illuminate\\Pagination\\PaginationServiceProvider',
+    8 => 'Illuminate\\Session\\SessionServiceProvider',
+    9 => 'Illuminate\\View\\ViewServiceProvider',
+    10 => 'Laravel\\Pail\\PailServiceProvider',
+    11 => 'Carbon\\Laravel\\ServiceProvider',
+    12 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+    13 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    14 => 'App\\Providers\\AppServiceProvider',
+  ),
+  'deferred' => 
+  array (
+    'Illuminate\\Broadcasting\\BroadcastManager' => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
+    'Illuminate\\Contracts\\Broadcasting\\Factory' => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
+    'Illuminate\\Contracts\\Broadcasting\\Broadcaster' => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
+    'Illuminate\\Bus\\Dispatcher' => 'Illuminate\\Bus\\BusServiceProvider',
+    'Illuminate\\Contracts\\Bus\\Dispatcher' => 'Illuminate\\Bus\\BusServiceProvider',
+    'Illuminate\\Contracts\\Bus\\QueueingDispatcher' => 'Illuminate\\Bus\\BusServiceProvider',
+    'Illuminate\\Bus\\BatchRepository' => 'Illuminate\\Bus\\BusServiceProvider',
+    'Illuminate\\Bus\\DatabaseBatchRepository' => 'Illuminate\\Bus\\BusServiceProvider',
+    'cache' => 'Illuminate\\Cache\\CacheServiceProvider',
+    'cache.store' => 'Illuminate\\Cache\\CacheServiceProvider',
+    'cache.psr6' => 'Illuminate\\Cache\\CacheServiceProvider',
+    'memcached.connector' => 'Illuminate\\Cache\\CacheServiceProvider',
+    'Illuminate\\Cache\\RateLimiter' => 'Illuminate\\Cache\\CacheServiceProvider',
+    'Illuminate\\Foundation\\Console\\AboutCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Cache\\Console\\ClearCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Cache\\Console\\ForgetCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ClearCompiledCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Auth\\Console\\ClearResetsCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ConfigCacheCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ConfigClearCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ConfigShowCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\DbCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\MonitorCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\PruneCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\ShowCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\TableCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\WipeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\DownCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EnvironmentCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EnvironmentDecryptCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EnvironmentEncryptCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EventCacheCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EventClearCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EventListCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Concurrency\\Console\\InvokeSerializedClosureCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\KeyGenerateCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\OptimizeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\OptimizeClearCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\PackageDiscoverCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Cache\\Console\\PruneStaleTagsCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\ClearCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\ListFailedCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\FlushFailedCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\ForgetFailedCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\ListenCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\MonitorCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\PauseCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\PruneBatchesCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\PruneFailedJobsCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\RestartCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\ResumeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\RetryCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\RetryBatchCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\WorkCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ReloadCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\RouteCacheCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\RouteClearCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\RouteListCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\DumpCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Seeds\\SeedCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Console\\Scheduling\\ScheduleFinishCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Console\\Scheduling\\ScheduleListCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Console\\Scheduling\\ScheduleRunCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Console\\Scheduling\\ScheduleClearCacheCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Console\\Scheduling\\ScheduleTestCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Console\\Scheduling\\ScheduleWorkCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Console\\Scheduling\\ScheduleInterruptCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\ShowModelCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\StorageLinkCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\StorageUnlinkCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\UpCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ViewCacheCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ViewClearCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ApiInstallCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\BroadcastingInstallCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Cache\\Console\\CacheTableCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\CastMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ChannelListCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ChannelMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ClassMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ComponentMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ConfigMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ConfigPublishCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ConsoleMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Routing\\Console\\ControllerMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\DocsCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EnumMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EventGenerateCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\EventMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ExceptionMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Factories\\FactoryMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\InterfaceMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\JobMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\JobMiddlewareMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\LangPublishCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ListenerMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\MailMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Routing\\Console\\MiddlewareMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ModelMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\NotificationMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Notifications\\Console\\NotificationTableCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ObserverMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\PolicyMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ProviderMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\FailedTableCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\TableCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Queue\\Console\\BatchesTableCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\RequestMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ResourceMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\RuleMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ScopeMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Seeds\\SeederMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Session\\Console\\SessionTableCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ServeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\StubPublishCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\TestMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\TraitMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\VendorPublishCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ViewMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'migrator' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'migration.repository' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'migration.creator' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Migrations\\Migrator' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\MigrateCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\FreshCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\InstallCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\RefreshCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\ResetCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\RollbackCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\StatusCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Database\\Console\\Migrations\\MigrateMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'composer' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Concurrency\\ConcurrencyManager' => 'Illuminate\\Concurrency\\ConcurrencyServiceProvider',
+    'hash' => 'Illuminate\\Hashing\\HashServiceProvider',
+    'hash.driver' => 'Illuminate\\Hashing\\HashServiceProvider',
+    'mail.manager' => 'Illuminate\\Mail\\MailServiceProvider',
+    'mailer' => 'Illuminate\\Mail\\MailServiceProvider',
+    'Illuminate\\Mail\\Markdown' => 'Illuminate\\Mail\\MailServiceProvider',
+    'auth.password' => 'Illuminate\\Auth\\Passwords\\PasswordResetServiceProvider',
+    'auth.password.broker' => 'Illuminate\\Auth\\Passwords\\PasswordResetServiceProvider',
+    'Illuminate\\Contracts\\Pipeline\\Hub' => 'Illuminate\\Pipeline\\PipelineServiceProvider',
+    'pipeline' => 'Illuminate\\Pipeline\\PipelineServiceProvider',
+    'queue' => 'Illuminate\\Queue\\QueueServiceProvider',
+    'queue.connection' => 'Illuminate\\Queue\\QueueServiceProvider',
+    'queue.failer' => 'Illuminate\\Queue\\QueueServiceProvider',
+    'queue.listener' => 'Illuminate\\Queue\\QueueServiceProvider',
+    'queue.worker' => 'Illuminate\\Queue\\QueueServiceProvider',
+    'redis' => 'Illuminate\\Redis\\RedisServiceProvider',
+    'redis.connection' => 'Illuminate\\Redis\\RedisServiceProvider',
+    'translator' => 'Illuminate\\Translation\\TranslationServiceProvider',
+    'translation.loader' => 'Illuminate\\Translation\\TranslationServiceProvider',
+    'validator' => 'Illuminate\\Validation\\ValidationServiceProvider',
+    'validation.presence' => 'Illuminate\\Validation\\ValidationServiceProvider',
+    'Illuminate\\Contracts\\Validation\\UncompromisedVerifier' => 'Illuminate\\Validation\\ValidationServiceProvider',
+    'Laravel\\Sail\\Console\\InstallCommand' => 'Laravel\\Sail\\SailServiceProvider',
+    'Laravel\\Sail\\Console\\PublishCommand' => 'Laravel\\Sail\\SailServiceProvider',
+    'command.tinker' => 'Laravel\\Tinker\\TinkerServiceProvider',
+  ),
+  'when' => 
+  array (
+    'Illuminate\\Broadcasting\\BroadcastServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Bus\\BusServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Cache\\CacheServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Concurrency\\ConcurrencyServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Hashing\\HashServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Mail\\MailServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Auth\\Passwords\\PasswordResetServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Pipeline\\PipelineServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Queue\\QueueServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Redis\\RedisServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Translation\\TranslationServiceProvider' => 
+    array (
+    ),
+    'Illuminate\\Validation\\ValidationServiceProvider' => 
+    array (
+    ),
+    'Laravel\\Sail\\SailServiceProvider' => 
+    array (
+    ),
+    'Laravel\\Tinker\\TinkerServiceProvider' => 
+    array (
+    ),
+  ),
+);
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\bootstrap\app.php ===
+<?php
+
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.'/../routes/web.php',
+        commands: __DIR__.'/../routes/console.php',
+        health: '/up',
+    )
+    ->withMiddleware(function (Middleware $middleware) {
+    $middleware->alias([
+        'role' => \App\Http\Middleware\RoleMiddleware::class,
+    ]);
+    })
+    ->withExceptions(function (Exceptions $exceptions): void {
+        //
+    })->create();
+    
+=== C:\Users\Ababacar\Desktop\exam_laravel\Gestion_assurance\bootstrap\providers.php ===
+<?php
+
+return [
+    App\Providers\AppServiceProvider::class,
+];

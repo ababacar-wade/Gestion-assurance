@@ -191,13 +191,29 @@
         }
 
         .sidebar-logout {
-            color: rgba(255,255,255,.4);
-            text-decoration: none;
-            font-size: 1rem;
-            transition: color .2s;
+            /* Reset total des styles Bootstrap sur <button> */
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            outline: none;
+            /* Style custom */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            color: rgba(255,255,255,.45);
+            font-size: 1.15rem;
+            transition: all .2s;
         }
 
-        .sidebar-logout:hover { color: #E53E3E; }
+        .sidebar-logout:hover {
+            color: #FC8181;
+            background: rgba(229,62,62,.18);
+        }
 
         /* ── Contenu principal ────────────────────────────────── */
         .main-content {
@@ -608,16 +624,25 @@
 
         {{-- User en bas de sidebar --}}
         <div class="sidebar-user">
-            <div class="sidebar-avatar">
-                {{ strtoupper(substr(Auth::user()->prenom, 0, 1)) }}{{ strtoupper(substr(Auth::user()->nom, 0, 1)) }}
-            </div>
+            {{-- Avatar avec initiales ou photo --}}
+            @if(Auth::user()->photo)
+                <img src="{{ asset('storage/' . Auth::user()->photo) }}"
+                     style="width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0;">
+            @else
+                <div class="sidebar-avatar">
+                    {{ strtoupper(substr(Auth::user()->prenom, 0, 1)) }}{{ strtoupper(substr(Auth::user()->nom, 0, 1)) }}
+                </div>
+            @endif
+
             <div class="sidebar-user-info">
                 <div class="sidebar-user-name">{{ Auth::user()->prenom }} {{ Auth::user()->nom }}</div>
                 <div class="sidebar-user-role">{{ Auth::user()->type }}</div>
             </div>
-            <form method="POST" action="{{ route('logout') }}">
+
+            {{-- Bouton déconnexion --}}
+            <form method="POST" action="{{ route('logout') }}" style="margin:0;padding:0;">
                 @csrf
-                <button type="submit" class="sidebar-logout" title="Déconnexion">
+                <button type="submit" class="sidebar-logout" title="Se déconnecter">
                     <i class="bi bi-box-arrow-right"></i>
                 </button>
             </form>

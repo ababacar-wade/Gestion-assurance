@@ -9,22 +9,34 @@ use Illuminate\Support\Facades\Auth;
 
 class SinistreController extends Controller
 {
-    // ── Liste ─────────────────────────────────────────────────
-    public function index()
+    // ── Liste ──────────────────────────────────────────────────────────────
+    public function index(Request $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $sinistres = match($user->type) {
-            'admin'  => Sinistre::with(['client', 'contrat.assurance', 'agent'])->latest()->paginate(15),
-            'agent'  => Sinistre::where('agent_id', $user->id)->with(['client', 'contrat'])->latest()->paginate(15),
-            default  => Sinistre::where('client_id', $user->id)->with('contrat.assurance')->latest()->paginate(15),
+        $query = match($user->type) {
+            'admin' => Sinistre::with(['client', 'contrat.assurance', 'agent']),
+            'agent' => Sinistre::where('agent_id', $user->id)->with(['client', 'contrat']),
+            default => Sinistre::where('client_id', $user->id)->with('contrat.assurance'),
         };
 
-        return view('sinistres.index', compact('sinistres'));
+        if ($request->filled('statut') && $request->statut !== 'tous') {
+            $query->where('statut', $request->statut);
+        }
+
+        $sinistres = $query->latest()->paginate(15);
+
+        $view = match($user->type) {
+            'admin' => 'admin.sinistres.index',
+            'agent' => 'agent.sinistres.index',
+            default => 'client.sinistres.index',
+        };
+
+        return view($view, compact('sinistres'));
     }
 
-    // ── Formulaire déclaration ────────────────────────────────
+    // ── Formulaire déclaration (client) ───────────────────────────────────
     public function create()
     {
         $contrats = Contrat::where('client_id', Auth::id())
@@ -32,22 +44,22 @@ class SinistreController extends Controller
             ->with('assurance')
             ->get();
 
-        return view('sinistres.create', compact('contrats'));
+        return view('client.sinistres.create', compact('contrats'));
     }
 
-    // ── Enregistrement déclaration ────────────────────────────
+    // ── Enregistrement déclaration ────────────────────────────────────────
     public function store(Request $request)
     {
         $data = $request->validate([
-            'contrat_id'     => ['required', 'exists:contrats,id'],
-            'date_sinistre'  => ['required', 'date', 'before_or_equal:today'],
-            'lieu'           => ['nullable', 'string', 'max:255'],
-            'description'    => ['required', 'string', 'min:20'],
-            'montant_reclame'=> ['nullable', 'numeric', 'min:0'],
-            'documents.*'    => ['nullable', 'file', 'mimes:jpg,png,pdf', 'max:5120'],
+            'contrat_id'      => ['required', 'exists:contrats,id'],
+            'date_sinistre'   => ['required', 'date', 'before_or_equal:today'],
+            'lieu'            => ['nullable', 'string', 'max:255'],
+            'description'     => ['required', 'string', 'min:20'],
+            'montant_reclame' => ['nullable', 'numeric', 'min:0'],
+            'documents.*'     => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
         ]);
 
-        // Vérifier que le contrat appartient au client
+        // Vérifier que le contrat appartient au client et est actif
         $contrat = Contrat::where('id', $data['contrat_id'])
             ->where('client_id', Auth::id())
             ->where('statut', 'actif')
@@ -69,25 +81,49 @@ class SinistreController extends Controller
         ]);
 
         return redirect()->route('client.sinistres.index')
-            ->with('success', 'Sinistre déclaré. Un agent vous contactera.');
+            ->with('success', 'Sinistre déclaré avec succès. Un agent vous contactera.');
     }
 
-    // ── Détail ────────────────────────────────────────────────
+    // ── Détail ────────────────────────────────────────────────────────────
     public function show(Sinistre $sinistre)
     {
         $this->authorizeSinistre($sinistre);
         $sinistre->load(['contrat.assurance', 'client', 'agent']);
-        return view('sinistres.show', compact('sinistre'));
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin' => 'admin.sinistres.show',
+            'agent' => 'agent.sinistres.show',
+            default => 'client.sinistres.show',
+        };
+
+        return view($view, compact('sinistre'));
     }
 
-    // ── Traitement (Agent/Admin) ──────────────────────────────
+    // ── Formulaire instruction (agent/admin) ──────────────────────────────
     public function edit(Sinistre $sinistre)
     {
-        return view('sinistres.edit', compact('sinistre'));
+        $this->authorizeSinistre($sinistre);
+        $sinistre->load(['contrat.assurance', 'client']);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $view = match($user->type) {
+            'admin' => 'admin.sinistres.edit',
+            default => 'agent.sinistres.edit',
+        };
+
+        return view($view, compact('sinistre'));
     }
 
+    // ── Mise à jour instruction ────────────────────────────────────────────
     public function update(Request $request, Sinistre $sinistre)
     {
+        $this->authorizeSinistre($sinistre);
+
         $data = $request->validate([
             'statut'          => ['required', 'in:declare,en_instruction,accepte,refuse,indemnise'],
             'montant_accorde' => ['nullable', 'numeric', 'min:0'],
@@ -99,11 +135,19 @@ class SinistreController extends Controller
             'agent_id' => Auth::id(),
         ]);
 
-        return redirect()->route('sinistres.show', $sinistre)
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $route = match($user->type) {
+            'admin' => 'admin.sinistres.show',
+            default => 'agent.sinistres.show',
+        };
+
+        return redirect()->route($route, $sinistre)
             ->with('success', 'Sinistre mis à jour.');
     }
 
-    // ── Sécurité ──────────────────────────────────────────────
+    // ── Sécurité ──────────────────────────────────────────────────────────
     private function authorizeSinistre(Sinistre $sinistre): void
     {
         /** @var \App\Models\User $user */
@@ -111,7 +155,7 @@ class SinistreController extends Controller
 
         $autorise = match($user->type) {
             'admin' => true,
-            'agent' => $sinistre->agent_id === $user->id,
+            'agent' => $sinistre->agent_id === $user->id || $sinistre->agent_id === null,
             default => $sinistre->client_id === $user->id,
         };
 

@@ -2,114 +2,76 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
+    protected $table = 'users';
+
     protected $fillable = [
-        'type', 'nom', 'prenom', 'email', 'password',
-        'telephone', 'adresse', 'photo', 'date_naissance',
-        'cin', 'profession', 'matricule', 'zone_couverte', 'is_active',
+        'nom', 'prenom', 'email', 'password', 'type',
+        'telephone', 'adresse', 'photo', 'is_active',
+        'date_naissance', 'cin', 'profession',
+        'matricule', 'zone_couverte',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
+    protected $hidden = ['password', 'remember_token'];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'date_naissance'    => 'date',
+        'is_active'         => 'boolean',
+        'password'          => 'hashed',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'date_naissance'    => 'date',
-            'is_active'         => 'boolean',
-            'password'          => 'hashed',    
-        ];
-    }
+    // ── STI uniquement ici dans le parent ─────────────────────────────────
+    // NE PAS surcharger newFromBuilder() dans les sous-classes !
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // STI : Laravel instancie automatiquement la bonne sous-classe
-    // selon la valeur de la colonne `type`.
-    // ──────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Map type → classe PHP.
-     */
     protected static array $stiMap = [
         'admin'  => Admin::class,
         'agent'  => Agent::class,
         'client' => Client::class,
     ];
 
-    /**
-     * Surcharge de newFromBuilder : retourne le bon objet selon `type`.
-     */
-    public function newFromBuilder($attributes = [], $connection = null): static
+    public function newFromBuilder($attributes = [], $connection = null)
     {
-        $type  = $attributes['type'] ?? null;
+        // $attributes peut être un tableau OU un stdClass selon le driver
+        $attrs = (array) $attributes;
+
+        $type  = $attrs['type'] ?? null;
         $class = static::$stiMap[$type] ?? static::class;
 
         /** @var static $model */
         $model = new $class();
         $model->exists = true;
-        $model->setRawAttributes((array) $attributes, true);
+        $model->setRawAttributes($attrs, true);
         $model->setConnection($connection ?? $this->getConnectionName());
         $model->fireModelEvent('retrieved', false);
 
         return $model;
     }
 
-     // ──────────────────────────────────────────────────────────────────────────
-    // Accesseurs pratiques
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── Helpers rôle ──────────────────────────────────────────────────────
+
+    public function isAdmin(): bool  { return $this->type === 'admin';  }
+    public function isAgent(): bool  { return $this->type === 'agent';  }
+    public function isClient(): bool { return $this->type === 'client'; }
+
+    // ── Accesseurs ────────────────────────────────────────────────────────
 
     public function getNomCompletAttribute(): string
     {
-        return "{$this->prenom} {$this->nom}";
+        return trim($this->prenom . ' ' . $this->nom);
     }
 
     public function getPhotoUrlAttribute(): string
     {
         return $this->photo
             ? asset('storage/' . $this->photo)
-            : asset('images/default-avatar.png');
-    }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    // Helpers de rôle
-    // ──────────────────────────────────────────────────────────────────────────
-
-    public function isAdmin(): bool   { return $this->type === 'admin';  }
-    public function isAgent(): bool   { return $this->type === 'agent';  }
-    public function isClient(): bool  { return $this->type === 'client'; }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    // Scopes
-    // ──────────────────────────────────────────────────────────────────────────
-
-    public function scopeActifs(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder
-    {
-        return $q->where('is_active', true);
+            : 'https://ui-avatars.com/api/?name=' . urlencode($this->nom_complet) . '&background=FF6B2B&color=fff';
     }
 }

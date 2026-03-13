@@ -56,6 +56,8 @@ return new class extends Migration
             $table->index(['contrat_id', 'statut']);
             $table->index('reference');
 
+            $table->timestamps();
+
         });
     }
 
